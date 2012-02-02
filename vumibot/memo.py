@@ -1,4 +1,4 @@
-# -*- test-case-name: vumi.demos.tests.test_ircbot -*-
+# -*- test-case-name: tests.test_memo -*-
 
 """Demo workers for constructing a simple IRC bot."""
 
