@@ -1,2 +1,4 @@
 /ve/
 *.py[co]
+/logs/
+/_trial_temp/
