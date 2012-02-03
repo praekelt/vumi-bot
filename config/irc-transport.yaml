@@ -2,7 +2,5 @@ transport_name: irc
 network: irc.freenode.net
 port: 6667
 channels:
-  - "#praekelt"
-  - "#vumi"
-  - "#jmbo"
-nickname: vumibot
+  - "#vumitt"
+nickname: vumitracker

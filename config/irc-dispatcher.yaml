@@ -3,8 +3,10 @@ transport_names:
 exposed_names:
   - memo
   - logger
+  - timetracker
 router_class: vumi.dispatchers.base.SimpleDispatchRouter
 route_mappings:
   irc:
     - memo
     - logger
+    - timetracker

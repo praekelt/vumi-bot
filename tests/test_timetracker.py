@@ -39,6 +39,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
             'spreadsheet_name': 'some-spreadsheet',
             'username': 'username',
             'password': 'password',
+            'class_name': 'tests.test_timetracker.TestSpreadSheet',
         })
         self.app.r_server = FakeRedis()
         self.app.spreadsheet = TestSpreadSheet(
@@ -93,7 +94,9 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log foo bar baz')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
-        self.assertEqual(response['content'], 'That does not compute.')
+        self.assertEqual(response['content'],
+            '%s: that does not compute. Format is %s' % (
+                msg.user(), self.app.HELP))
         self.assertEqual(self.app.spreadsheet._data, {})
 
     @inlineCallbacks
@@ -101,7 +104,8 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log 4h@2012-2-31 vumibot, writing tests')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
-        self.assertEqual(response['content'], 'Eep! day is out of range for month.')
+        self.assertEqual(response['content'],
+            '%s: eep! day is out of range for month.' % (msg.user(),))
         self.assertEqual(self.app.spreadsheet._data, {})
 
     @inlineCallbacks
