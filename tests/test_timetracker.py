@@ -5,30 +5,12 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 from vumi.application.tests.test_base import ApplicationTestCase
 from vumi.tests.utils import FakeRedis
 
-from vumibot.timetracker import TimeTrackWorker
-
-class TestSpreadSheet(object):
-    def __init__(self, name, username=None, password=None):
-        self.name = name
-        self.username = username
-        self.password = password
-        self._data = {}
-        if self.username:
-            self.authenticate()
-
-    def authenticate(self):
-        return True
-
-    def add_row(self, worksheet, row):
-        self._data.setdefault(worksheet, [])
-        self._data[worksheet].append(row)
-
-    def get_worksheet(self, worksheet):
-        return self._data.setdefault(worksheet, [])
+from vumibot.timetracker import TimeTrackCommand
+from vumibot.timetracker import BotWorker
 
 class TimeTrackWorkerTestCase(ApplicationTestCase):
 
-    application_class = TimeTrackWorker
+    application_class = BotWorker
     timeout = 1
 
     @inlineCallbacks
@@ -36,86 +18,115 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         super(TimeTrackWorkerTestCase, self).setUp()
         self.app = yield self.get_application({
             'worker_name': 'test_timetracker',
-            'spreadsheet_name': 'some-spreadsheet',
-            'username': 'username',
-            'password': 'password',
-            'class_name': 'tests.test_timetracker.TestSpreadSheet',
+            'command_configs': {
+                'time_tracker': {
+                    'spreadsheet_name': 'some-spreadsheet',
+                    'username': 'praekeltjenkins',
+                    'password': '54trgfbv',
+                    'validity': '10',
+                }
+            }
         })
-        self.app.r_server = FakeRedis()
-        self.app.spreadsheet = TestSpreadSheet(
-            self.app.spreadsheet_name,
-            self.app.username, self.app.password)
+        self.fake_redis = FakeRedis()
+        self.app.r_server = self.fake_redis
+
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
+        tt_command.r_server = self.fake_redis
+
         self.today = datetime.utcnow().date()
         self.yesterday = self.today - timedelta(days=1)
 
+    @inlineCallbacks
     def tearDown(self):
-        self.app.r_server.teardown()
+        yield super(TimeTrackWorkerTestCase, self).tearDown()
+        self.fake_redis.teardown()
 
     @inlineCallbacks
     def test_logging(self):
         msg = self.mkmsg_in(content='!log 4h vumibot, writing tests')
         yield self.dispatch(msg)
-        worksheet = self.app.spreadsheet.get_worksheet(msg.user())
-        self.assertEqual(worksheet, [{
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
+        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        self.assertEqual(data, {
             'date': self.today.isoformat(),
-            'time': '4h',
+            'time': str(4 * 60 * 60),
             'project': 'vumibot',
             'notes': 'writing tests',
-        }])
+        })
 
     @inlineCallbacks
     def test_named_backdating(self):
         msg = self.mkmsg_in(
             content='!log 4h@yesterday vumibot, writing tests')
         yield self.dispatch(msg)
-        worksheet = self.app.spreadsheet.get_worksheet(msg.user())
-        self.assertEqual(worksheet, [{
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
+        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        self.assertEqual(data, {
             'date': self.yesterday.isoformat(),
-            'time': '4h',
+            'time': str(4 * 60 * 60),
             'project': 'vumibot',
             'notes': 'writing tests',
-        }])
+        })
 
     @inlineCallbacks
     def test_backdating(self):
         msg = self.mkmsg_in(
             content='!log 4h@2012-2-4 vumibot, writing tests')
         yield self.dispatch(msg)
-        worksheet = self.app.spreadsheet.get_worksheet(msg.user())
-        self.assertEqual(worksheet, [{
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
+        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        self.assertEqual(data, {
             'date': '2012-02-04',
-            'time': '4h',
+            'time': str(4 * 60 * 60),
             'project': 'vumibot',
             'notes': 'writing tests',
-        }])
+        })
 
     @inlineCallbacks
     def test_bad_command(self):
         msg = self.mkmsg_in(content='!log foo bar baz')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
         self.assertEqual(response['content'],
-            '%s: that does not compute. Format is %s' % (
-                msg.user(), self.app.HELP))
-        self.assertEqual(self.app.spreadsheet._data, {})
+            '%s: that does not compute. %s' % (
+                msg.user(), tt_command.get_help()))
+        worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
+        self.assertEqual(list(worksheet), [])
 
     @inlineCallbacks
     def test_bad_format(self):
         msg = self.mkmsg_in(content='!log 4h@2012-2-31 vumibot, writing tests')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
         self.assertEqual(response['content'],
             '%s: eep! day is out of range for month.' % (msg.user(),))
-        self.assertEqual(self.app.spreadsheet._data, {})
+        worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
+        self.assertEqual(list(worksheet), [])
 
     @inlineCallbacks
     def test_without_notes(self):
         msg = self.mkmsg_in(content='!log 4h vumibot')
         yield self.dispatch(msg)
-        worksheet = self.app.spreadsheet.get_worksheet(msg.user())
-        self.assertEqual(worksheet, [{
+        [tt_command] = self.app.get_commands(TimeTrackCommand)
+        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        self.assertEqual(data, {
             'date': self.today.isoformat(),
-            'time': '4h',
+            'time': str(4 * 60 * 60),
             'project': 'vumibot',
             'notes': '',
-        }])
+        })
+
+    # @inlineCallbacks
+    # def test_dumping_of_data(self):
+    #     users = ['tester 123', 'testing 345']
+    #     for user in users:
+    #         for i in range(0,10):
+    #             msg = self.mkmsg_in(content='!log 4h vumibot, testing %s' % (i,),
+    #                                 from_addr=user)
+    #             yield self.dispatch(msg)
+
+    #     [tt_command] = self.app.get_commands(TimeTrackCommand)
+    #     response = yield tt_command.spreadsheet.publish()
+    #     print response

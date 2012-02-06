@@ -1,102 +1,236 @@
 # -*- test-case-name: tests.test_timetracker -*-
 
 """
-Simple possible time tracker ever
+Simplest possible time tracker ever
 """
 
 import re
+import time
+import uuid
+import redis
+import csv
+import json
+import base64
+
+from pprint import pprint
+from StringIO import StringIO
 from datetime import datetime, timedelta
 
 from twisted.internet import reactor
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import inlineCallbacks, returnValue
 from twisted.internet.threads import deferToThread
 
 from gdata.spreadsheet import service
 from gdata.service import CaptchaRequired
 
-from vumi.utils import load_class_by_string
+from vumi.utils import load_class_by_string, http_request_full
+from vumi.tests.utils import FakeRedis
 from vumi.application import ApplicationWorker
+from vumi.transports.scheduler import Scheduler
 
-class GDocsError(Exception): pass
 
-class GDocsSpreadSheet(object):
-    def __init__(self, name, username=None, password=None,
-                    captcha_token=None, captcha_response=None):
-        self.name = name
-        self.client = service.SpreadsheetsService()
-        self.client.username = username
-        self.client.password = password
-        self.client.source = name
-        self._worksheets = {}
-        self.client.ProgrammaticLogin()
-        self._spreadsheet_key = self._find_spreadsheet(self.client, self.name)
+class RedisSpreadSheet(object):
+    def __init__(self, r_server, r_prefix, username, password, validity=600):
+        self.r_server = r_server
+        self.r_prefix = r_prefix
+        self.username = username
+        self.password = password
+        self.validity = validity
+        self.worksheets_key = self.r_key('worksheets')
+        self.gist_url = 'https://api.github.com/gists'
+        self.gist_headers = {
+            'Authorization': 'Basic %s' % (
+                base64.b64encode('%s:%s' % (
+                    self.username,
+                    self.password,
+                )),
+            )
+        }
 
-    def _find_spreadsheet(self, client, name):
-        feed = client.GetSpreadsheetsFeed()
-        for index, entry in enumerate(feed.entry):
-            if entry.title.text == name:
-                return entry.id.text.split('/',1)[1]
-        raise GDocsError('Cannot find %s' % (name,))
+        self.scheduler = Scheduler(self.r_server, self.gc_expired_documents,
+            '%s:scheduler' % (self.r_prefix,))
+        self.scheduler.start()
+        self.gc_key = self.r_key('worksheets')
 
-    def _find_worksheet(self, client, spreadsheet_key, name):
-        cache = self._worksheets.setdefault(spreadsheet_key, {})
-        if name in cache:
-            return cache.get(name)
+    def r_key(self, *args):
+        return ':'.join([self.r_prefix] + map(str, args))
 
-        feed = client.GetWorksheetsFeed(spreadsheet_key)
-        for index, entry in enumerate(feed.entry):
-            if entry.title == name:
-                worksheet_key = entry.id.text.spilt('/', 1)[1]
-                cache[name] = worksheet_key
-                return worksheet_key
+    def get_row_key(self, worksheet_name):
+        return self.r_key(worksheet_name, 'rows')
 
-        return self._make_worksheet(client, spreadsheet_key, name)
+    def get_column_key(self, worksheet_name, row_key):
+        return self.r_key(worksheet_name, row_key, 'columns')
 
-    def _make_worksheet(self, client, spreadsheet_key, name):
-        pass
+    def get_worksheets(self):
+        return self.r_server.smembers(self.worksheets_key)
 
-    def add_row(self, worksheet, row):
-        self._data.setdefault(worksheet, [])
-        self._data[worksheet].append(row)
-        print 'adding'
-        print row
+    def get_rows(self, worksheet_name):
+        rows_key = self.get_row_key(worksheet_name)
+        return self.r_server.zrange(rows_key, 0, -1)
 
-    def get_worksheet(self, worksheet):
-        return self._data.setdefault(worksheet, [])
+    def add_row(self, worksheet_name, row):
+        # add as a worksheet
+        self.r_server.sadd(self.worksheets_key, worksheet_name)
+        # timestamp for this row, used in ordering
+        date = row['date']
+        date_in_seconds = time.mktime(date.timetuple())
+        # unique uuid for this row
+        row_key = uuid.uuid4().hex
+        # store row reference in order of timestamps
+        worksheet_row_key = self.get_row_key(worksheet_name)
+        self.r_server.zadd(worksheet_row_key, **{
+            row_key: int(date_in_seconds)
+        })
+        return row_key, self.add_column(worksheet_name, row_key, row)
 
-class TimeTrackWorker(ApplicationWorker):
+    def add_column(self, worksheet_name, row_key, data):
+        # store column data
+        worksheet_column_key = self.get_column_key(worksheet_name, row_key)
+        data.update({
+            'date': data['date'].isoformat(),
+        })
+        self.r_server.hmset(worksheet_column_key, data)
+        return data
 
-    HELP = "!log <amount><units> <project>, <notes>. " \
-                        "Where units can be d,h,m. " \
-                        "Backdate with `4h@yesterday` or `4h@yyyy-mm-dd`"
-    TT_COMMAND = '!log'
-    TT_FORMAT = r"""
-        ^%s\s+                          # the command
-        (?P<time>\d+[m,h,d])            # how many hours
-        (@(?P<date>[a-z0-9\-]+))?       # back date 1 day at most
-        \s+                             #
-        (?P<project>[^,]+)              # column header
-        (,\s)?                          #
-        (?P<notes>.*)$                  # notes
-        """ % TT_COMMAND
+    def get_column(self, worksheet_name, row_key):
+        worksheet_column_key = self.get_column_key(worksheet_name, row_key)
+        return self.r_server.hgetall(worksheet_column_key)
 
-    def validate_config(self):
-        self.spreadsheet_name = self.config['spreadsheet_name']
-        self.username = self.config['username']
-        self.password = self.config['password']
-        cls_name = self.config.get('class_name')
-        if cls_name:
-            self.cls = load_class_by_string(cls_name)
-        else:
-            self.cls = GDocsSpreadSheet
+    def get_worksheet(self, worksheet_name):
+        rows = self.get_rows(worksheet_name)
+        for row_key in rows:
+            yield row_key, self.get_column(worksheet_name, row_key)
+
+    def worksheet_to_filename(self, worksheet_name):
+        return worksheet_name.lower().replace(' ','-')
 
     @inlineCallbacks
-    def setup_application(self):
-        self.spreadsheet = yield deferToThread(self.cls,
+    def publish(self):
+        gist_payload = {
+            "description": "TimeTrack report as of %s" % (
+                                datetime.now().isoformat(),),
+            "public": False,
+        }
+        worksheets = self.get_worksheets()
+        for worksheet_name in worksheets:
+            sio = StringIO()
+            writer = csv.writer(sio)
+            # write the header
+            writer.writerow([
+                "date",
+                "project",
+                "time",
+                "notes",
+            ])
+            worksheet = self.get_worksheet(worksheet_name)
+            for row_key, data in worksheet:
+                writer.writerow([
+                    data['date'],
+                    data['project'],
+                    data['time'],
+                    data['notes'],
+                ])
+
+            files = gist_payload.setdefault('files', {})
+            worksheet_filename = self.worksheet_to_filename(worksheet_name)
+            files["%s.csv" % (worksheet_filename,)] = {
+                "content": sio.getvalue(),
+            }
+
+        response = yield http_request_full(
+            self.gist_url,
+            json.dumps(gist_payload), self.gist_headers)
+
+        print response
+        data = json.loads(response.delivered_body)
+        html_url = data['html_url']
+        self.scheduler.schedule(self.validity, html_url)
+        returnValue(html_url)
+
+    @inlineCallbacks
+    def gc_expired_documents(self, scheduled_at, html_url):
+        print 'deleting', html_url
+        response = yield http_request_full(html_url,
+            headers=self.gist_headers, method="POST")
+        print response
+
+class CommandFormatException(Exception): pass
+
+class BotCommand(object):
+
+    def start_command(self):
+        pass
+
+    def stop_command(self):
+        pass
+
+    def get_command(self):
+        raise NotImplementedError("Subclasses should implement this.")
+
+    def get_pattern(self):
+        raise NotImplementedError("Subclasses should implement this.")
+
+    def get_compiled_pattern(self):
+        if not hasattr(self, '_pattern'):
+            self._pattern = re.compile(self.get_pattern(), re.VERBOSE)
+        return self._pattern
+
+    def get_help(self):
+        return "I grok %s" % (self.get_pattern(),)
+
+    def accepts(self, command):
+        return command == self.get_command()
+
+    def handle_command(self, user_id, command_text):
+        raise NotImplementedError('Subclasses must implement handle_command()')
+
+    def parse(self, user_id, full_text):
+        command, command_text = full_text.split(' ', 1)
+        if self.accepts(command):
+            return self.handle_command(user_id, command_text)
+
+
+class TimeTrackCommand(BotCommand):
+
+    def __init__(self, r_server, config):
+        self.r_server = r_server
+        self.spreadsheet_name = config['spreadsheet_name']
+        self.username = config['username']
+        self.password = config['password']
+        self.validity = config['validity']
+        self.spreadsheet = None
+
+    def setup_command(self):
+        self.spreadsheet = RedisSpreadSheet(
+            self.r_server,
             self.spreadsheet_name,
             username=self.username,
-            password=self.password)
-        self.pattern = re.compile(self.TT_FORMAT, re.VERBOSE)
+            password=self.password,
+            validity=self.validity
+        )
+
+    def teardown_command(self):
+        if self.spreadsheet:
+            self.spreadsheet.scheduler.stop()
+
+    def get_command(self):
+        return "log"
+
+    def get_pattern(self):
+        return r"""
+            ^
+            (?P<time>\d+[m,h])              # how many hours
+            (@(?P<date>[a-z0-9\-]+))?       # back date 1 day at most
+            \s+                             #
+            (?P<project>[^,]+)              # column header
+            (,\s)?                          #
+            (?P<notes>.*)$                  # notes
+        """
+
+    def get_help(self):
+        return "Format is <amount><units> <project>, <notes>. " \
+                "Where units can be d,h,m. " \
+                "Backdate with `4h@yesterday` or `4h@yyyy-mm-dd`"
 
     def convert_date(self, named_date):
         if named_date=="yesterday":
@@ -104,22 +238,71 @@ class TimeTrackWorker(ApplicationWorker):
         else:
             return datetime(*map(int, named_date.split('-'))).date()
 
+    def convert_time_unit(self, named_time):
+        formatters = {
+            'h': lambda v: int(v) * 60 * 60,
+            'm': lambda v: int(v) * 60,
+        }
+        value, unit = named_time[0:-1], named_time[-1]
+        return formatters.get(unit)(value)
+
+    def handle_command(self, user_id, command_text):
+        match = self.get_compiled_pattern().match(command_text)
+        if match:
+            results = match.groupdict()
+            date = results['date']
+            time = results['time']
+            results.update({
+                'date': (self.convert_date(date) if date
+                            else datetime.utcnow().date()),
+                'time': self.convert_time_unit(time),
+            })
+            self.spreadsheet.add_row(user_id, results)
+        else:
+            raise CommandFormatException()
+
+
+class BotWorker(ApplicationWorker):
+
+    COMMAND_PREFIX = '!'
+
+    def validate_config(self):
+        self.r_config = self.config.get('redis_config', {})
+        self.bot_commands = self.config.get('command_configs', {})
+
+    def setup_application(self):
+        # self.r_server = redis.Redis(**self.r_config)
+        self.r_server = FakeRedis()
+        self.commands = [
+            TimeTrackCommand(self.r_server,
+                self.bot_commands.get('time_tracker'))
+        ]
+
+        for command in self.commands:
+            command.setup_command()
+
+    @inlineCallbacks
+    def teardown_application(self):
+        for command in self.commands:
+            yield command.teardown_command()
+
+    def get_commands(self, cls):
+        return [command for command in self.commands
+                    if isinstance(command, cls)]
+
     def consume_user_message(self, message):
         content = message['content']
-        match = self.pattern.match(content)
-        if match:
-                results = match.groupdict()
-                date = results['date']
+        if content.startswith(self.COMMAND_PREFIX):
+            prefix, command = content.split(self.COMMAND_PREFIX, 1)
+            for command_handler in self.commands:
                 try:
-                    results.update({
-                        'date': (self.convert_date(date) if date
-                                    else datetime.utcnow().date()).isoformat()
-                    })
-                    self.spreadsheet.add_row(message.user(), results)
-                except (TypeError, ValueError), e:
+                    reply = command_handler.parse(message.user(), command)
+                    if reply:
+                        self.reply_to(message, '%s: %s' % (
+                            message['from_addr'], reply))
+                except CommandFormatException, e:
+                    self.reply_to(message, "%s: that does not compute. %s" % (
+                        message['from_addr'], command_handler.get_help()))
+                except Exception, e:
                     self.reply_to(message, '%s: eep! %s.' % (
                         message['from_addr'], e))
-        elif content.startswith(self.TT_COMMAND):
-            self.reply_to(message,
-                '%s: that does not compute. Format is %s' % (
-                    message['from_addr'], self.HELP))
