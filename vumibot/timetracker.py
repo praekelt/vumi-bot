@@ -104,8 +104,7 @@ class RedisSpreadSheet(object):
     def worksheet_to_filename(self, worksheet_name):
         return worksheet_name.lower().replace(' ','-')
 
-    @inlineCallbacks
-    def publish(self):
+    def get_gist_payload(self):
         gist_payload = {
             "description": "TimeTrack report as of %s" % (
                                 datetime.now().isoformat(),),
@@ -136,23 +135,25 @@ class RedisSpreadSheet(object):
             files["%s.csv" % (worksheet_filename,)] = {
                 "content": sio.getvalue(),
             }
+        return gist_payload
 
+    @inlineCallbacks
+    def publish(self):
+        gist_payload = self.get_gist_payload()
         response = yield http_request_full(
             self.gist_url,
             json.dumps(gist_payload), self.gist_headers)
 
-        print response
         data = json.loads(response.delivered_body)
         html_url = data['html_url']
-        self.scheduler.schedule(self.validity, html_url)
+        url = data['url']
+        self.scheduler.schedule(self.validity, url)
         returnValue(html_url)
 
     @inlineCallbacks
-    def gc_expired_documents(self, scheduled_at, html_url):
-        print 'deleting', html_url
-        response = yield http_request_full(html_url,
-            headers=self.gist_headers, method="POST")
-        print response
+    def gc_expired_documents(self, scheduled_at, url):
+        response = yield http_request_full(url.encode('utf8'),
+            headers=self.gist_headers, method="DELETE")
 
 class CommandFormatException(Exception): pass
 
@@ -185,10 +186,52 @@ class BotCommand(object):
         raise NotImplementedError('Subclasses must implement handle_command()')
 
     def parse(self, user_id, full_text):
-        command, command_text = full_text.split(' ', 1)
+        try:
+            command, command_text = full_text.split(' ', 1)
+        except ValueError:
+            command = full_text
+            command_text = ''
+
         if self.accepts(command):
             return self.handle_command(user_id, command_text)
 
+
+class PublishTimeTrackCommand(BotCommand):
+
+    def __init__(self, r_server, config):
+        self.r_server = r_server
+        self.spreadsheet_name = config['spreadsheet_name']
+        self.username = config['username']
+        self.password = config['password']
+        self.validity = int(config['validity'])
+        self.spreadsheet = None
+
+    def setup_command(self):
+        self.spreadsheet = RedisSpreadSheet(
+            self.r_server,
+            self.spreadsheet_name,
+            username=self.username,
+            password=self.password,
+            validity=self.validity
+        )
+
+    def teardown_command(self):
+        if self.spreadsheet:
+            self.spreadsheet.scheduler.stop()
+
+    def get_command(self):
+        return "publish"
+
+    def get_pattern(self):
+        return r''
+
+    def get_help(self):
+        return "Publish the latest time tracker stats as a multifile Gist"
+
+    @inlineCallbacks
+    def handle_command(self, user_id, command_text):
+        url = yield self.spreadsheet.publish()
+        returnValue(url)
 
 class TimeTrackCommand(BotCommand):
 
@@ -197,7 +240,7 @@ class TimeTrackCommand(BotCommand):
         self.spreadsheet_name = config['spreadsheet_name']
         self.username = config['username']
         self.password = config['password']
-        self.validity = config['validity']
+        self.validity = int(config['validity'])
         self.spreadsheet = None
 
     def setup_command(self):
@@ -275,7 +318,9 @@ class BotWorker(ApplicationWorker):
         self.r_server = FakeRedis()
         self.commands = [
             TimeTrackCommand(self.r_server,
-                self.bot_commands.get('time_tracker'))
+                self.bot_commands.get('time_tracker')),
+            PublishTimeTrackCommand(self.r_server,
+                self.bot_commands.get('time_tracker')),
         ]
 
         for command in self.commands:
@@ -290,13 +335,14 @@ class BotWorker(ApplicationWorker):
         return [command for command in self.commands
                     if isinstance(command, cls)]
 
+    @inlineCallbacks
     def consume_user_message(self, message):
         content = message['content']
         if content.startswith(self.COMMAND_PREFIX):
             prefix, command = content.split(self.COMMAND_PREFIX, 1)
             for command_handler in self.commands:
                 try:
-                    reply = command_handler.parse(message.user(), command)
+                    reply = yield command_handler.parse(message.user(), command)
                     if reply:
                         self.reply_to(message, '%s: %s' % (
                             message['from_addr'], reply))
