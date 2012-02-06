@@ -314,8 +314,7 @@ class BotWorker(ApplicationWorker):
         self.bot_commands = self.config.get('command_configs', {})
 
     def setup_application(self):
-        # self.r_server = redis.Redis(**self.r_config)
-        self.r_server = FakeRedis()
+        self.r_server = redis.Redis(**self.r_config)
         self.commands = [
             TimeTrackCommand(self.r_server,
                 self.bot_commands.get('time_tracker')),
