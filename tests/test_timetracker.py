@@ -10,8 +10,7 @@ from twisted.web.server import Site
 from vumi.application.tests.test_base import ApplicationTestCase
 from vumi.tests.utils import FakeRedis
 
-from vumibot.timetracker import TimeTrackCommand
-from vumibot.timetracker import BotWorker
+from vumibot.timetracker import TimeTrackCommand, TimeTrackWorker
 
 
 class GistResource(Resource):
@@ -28,7 +27,7 @@ class GistResource(Resource):
 
 class TimeTrackWorkerTestCase(ApplicationTestCase):
 
-    application_class = BotWorker
+    application_class = TimeTrackWorker
     timeout = 1
 
     @inlineCallbacks
