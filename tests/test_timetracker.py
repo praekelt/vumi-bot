@@ -54,7 +54,8 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         self.app.r_server = self.fake_redis
 
         [tt_command] = self.app.get_commands(TimeTrackCommand)
-        tt_command.r_server = self.fake_redis
+        tt_command.r_server= self.fake_redis
+        tt_command.spreadsheet.r_server = self.fake_redis
         tt_command.spreadsheet.gist_url = self.server_url
 
         self.today = datetime.utcnow().date()
@@ -71,6 +72,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log 4h vumibot, writing tests')
         yield self.dispatch(msg)
         [tt_command] = self.app.get_commands(TimeTrackCommand)
+        worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
         [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(data, {
             'date': self.today.isoformat(),
