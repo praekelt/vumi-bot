@@ -81,6 +81,12 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
             'notes': 'writing tests',
         })
 
+        # This should probably be in its own test.
+        # We use a different queue name so that we can have multiple workers
+        # listening to the same routing key.
+        self.assertTrue("sphex.inbound.time_tracker" in self._amqp.queues)
+        self.assertTrue("sphex.inbound" not in self._amqp.queues)
+
     @inlineCallbacks
     def test_named_backdating(self):
         msg = self.mkmsg_in(

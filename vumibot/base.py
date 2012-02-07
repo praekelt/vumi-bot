@@ -3,6 +3,7 @@ import re
 import redis
 from twisted.internet.defer import inlineCallbacks
 
+from vumi.message import TransportUserMessage, TransportEvent
 from vumi.application import ApplicationWorker
 
 
@@ -94,3 +95,23 @@ class BotWorker(ApplicationWorker):
                 except Exception, e:
                     self.reply_to(message, '%s: eep! %s.' % (
                         message['from_addr'], e))
+
+    @inlineCallbacks
+    def _setup_transport_consumer(self):
+        rkey = '%(transport_name)s.inbound' % self.config
+        self.transport_consumer = yield self.consume(
+            rkey,
+            self.dispatch_user_message,
+            queue_name="%s.%s" % (rkey, self.FEATURE_NAME),
+            message_class=TransportUserMessage)
+        self._consumers.append(self.transport_consumer)
+
+    @inlineCallbacks
+    def _setup_event_consumer(self):
+        rkey = '%(transport_name)s.event' % self.config
+        self.transport_event_consumer = yield self.consume(
+            rkey,
+            self.dispatch_event,
+            queue_name="%s.%s" % (rkey, self.FEATURE_NAME),
+            message_class=TransportEvent)
+        self._consumers.append(self.transport_event_consumer)
