@@ -4,29 +4,22 @@
 Simplest possible time tracker ever
 """
 
-import re
 import time
 import uuid
-import redis
 import csv
 import json
 import base64
-
-from pprint import pprint
 from StringIO import StringIO
 from datetime import datetime, timedelta
 
-from twisted.internet import reactor
+import redis
 from twisted.internet.defer import inlineCallbacks, returnValue
-from twisted.internet.threads import deferToThread
 
-from gdata.spreadsheet import service
-from gdata.service import CaptchaRequired
-
-from vumi.utils import load_class_by_string, http_request_full
-from vumi.tests.utils import FakeRedis
+from vumi.utils import http_request_full
 from vumi.application import ApplicationWorker
 from vumi.transports.scheduler import Scheduler
+
+from vumibot.base import BotCommand, CommandFormatException
 
 
 class RedisSpreadSheet(object):
@@ -102,7 +95,7 @@ class RedisSpreadSheet(object):
             yield row_key, self.get_column(worksheet_name, row_key)
 
     def worksheet_to_filename(self, worksheet_name):
-        return worksheet_name.lower().replace(' ','-')
+        return worksheet_name.lower().replace(' ', '-')
 
     def get_gist_payload(self):
         gist_payload = {
@@ -152,48 +145,8 @@ class RedisSpreadSheet(object):
 
     @inlineCallbacks
     def gc_expired_documents(self, scheduled_at, url):
-        response = yield http_request_full(url.encode('utf8'),
-            headers=self.gist_headers, method="DELETE")
-
-class CommandFormatException(Exception): pass
-
-class BotCommand(object):
-
-    def start_command(self):
-        pass
-
-    def stop_command(self):
-        pass
-
-    def get_command(self):
-        raise NotImplementedError("Subclasses should implement this.")
-
-    def get_pattern(self):
-        raise NotImplementedError("Subclasses should implement this.")
-
-    def get_compiled_pattern(self):
-        if not hasattr(self, '_pattern'):
-            self._pattern = re.compile(self.get_pattern(), re.VERBOSE)
-        return self._pattern
-
-    def get_help(self):
-        return "I grok %s" % (self.get_pattern(),)
-
-    def accepts(self, command):
-        return command == self.get_command()
-
-    def handle_command(self, user_id, command_text):
-        raise NotImplementedError('Subclasses must implement handle_command()')
-
-    def parse(self, user_id, full_text):
-        try:
-            command, command_text = full_text.split(' ', 1)
-        except ValueError:
-            command = full_text
-            command_text = ''
-
-        if self.accepts(command):
-            return self.handle_command(user_id, command_text)
+        yield http_request_full(
+            url.encode('utf8'), headers=self.gist_headers, method="DELETE")
 
 
 class PublishTimeTrackCommand(BotCommand):
@@ -232,6 +185,7 @@ class PublishTimeTrackCommand(BotCommand):
     def handle_command(self, user_id, command_text):
         url = yield self.spreadsheet.publish()
         returnValue(url)
+
 
 class TimeTrackCommand(BotCommand):
 
@@ -276,7 +230,7 @@ class TimeTrackCommand(BotCommand):
                 "Backdate with `4h@yesterday` or `4h@yyyy-mm-dd`"
 
     def convert_date(self, named_date):
-        if named_date=="yesterday":
+        if named_date == "yesterday":
             return datetime.utcnow().date() - timedelta(days=1)
         else:
             return datetime(*map(int, named_date.split('-'))).date()
@@ -338,10 +292,10 @@ class BotWorker(ApplicationWorker):
     def consume_user_message(self, message):
         content = message['content']
         if content.startswith(self.COMMAND_PREFIX):
-            prefix, command = content.split(self.COMMAND_PREFIX, 1)
+            prefix, cmd = content.split(self.COMMAND_PREFIX, 1)
             for command_handler in self.commands:
                 try:
-                    reply = yield command_handler.parse(message.user(), command)
+                    reply = yield command_handler.parse(message.user(), cmd)
                     if reply:
                         self.reply_to(message, '%s: %s' % (
                             message['from_addr'], reply))
