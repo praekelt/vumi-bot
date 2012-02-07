@@ -1,3 +1,5 @@
+# -*- test-case-name: tests.test_base -*-
+
 import re
 
 import redis
