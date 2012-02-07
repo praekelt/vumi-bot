@@ -2,7 +2,7 @@ import json
 
 from datetime import datetime, timedelta
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks
 from twisted.web.resource import Resource
 from twisted.internet import reactor
 from twisted.web.server import Site
@@ -12,6 +12,7 @@ from vumi.tests.utils import FakeRedis
 
 from vumibot.timetracker import TimeTrackCommand
 from vumibot.timetracker import BotWorker
+
 
 class GistResource(Resource):
 
@@ -23,6 +24,7 @@ class GistResource(Resource):
             'html_url': 'http://web.localhost/id',
             'url': 'http://api.localhost/id',
         })
+
 
 class TimeTrackWorkerTestCase(ApplicationTestCase):
 
@@ -54,7 +56,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         self.app.r_server = self.fake_redis
 
         [tt_command] = self.app.get_commands(TimeTrackCommand)
-        tt_command.r_server= self.fake_redis
+        tt_command.r_server = self.fake_redis
         tt_command.spreadsheet.r_server = self.fake_redis
         tt_command.spreadsheet.gist_url = self.server_url
 
@@ -72,7 +74,6 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log 4h vumibot, writing tests')
         yield self.dispatch(msg)
         [tt_command] = self.app.get_commands(TimeTrackCommand)
-        worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
         [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(data, {
             'date': self.today.isoformat(),
@@ -149,9 +150,10 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
     def test_dumping_of_data(self):
         users = ['tester 123', 'testing 345']
         for user in users:
-            for i in range(0,10):
-                msg = self.mkmsg_in(content='!log 4h vumibot, testing %s' % (i,),
-                                    from_addr=user)
+            for i in range(0, 10):
+                msg = self.mkmsg_in(
+                    content='!log 4h vumibot, testing %s' % (i,),
+                    from_addr=user)
                 yield self.dispatch(msg)
 
         [tt_command] = self.app.get_commands(TimeTrackCommand)
