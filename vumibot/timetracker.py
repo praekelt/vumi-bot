@@ -253,7 +253,7 @@ class TimeTrackCommand(BotCommand):
                 'time': self.convert_time_unit(time),
             })
             self.spreadsheet.add_row(user_id, results)
-            returnValue("Logged, thanks.")
+            return "Logged, thanks."
         else:
             raise CommandFormatException()
 
