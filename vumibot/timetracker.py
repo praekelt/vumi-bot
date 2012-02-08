@@ -149,17 +149,17 @@ class RedisSpreadSheet(object):
 
 class PublishTimeTrackCommand(BotCommand):
 
-    def __init__(self, r_server, config):
-        self.r_server = r_server
-        self.spreadsheet_name = config['spreadsheet_name']
-        self.username = config['username']
-        self.password = config['password']
-        self.validity = int(config['validity'])
-        self.spreadsheet = None
+    command = "publish"
+    pattern = r''
 
     def setup_command(self):
+        self.spreadsheet_name = self.config['spreadsheet_name']
+        self.username = self.config['username']
+        self.password = self.config['password']
+        self.validity = int(self.config['validity'])
+
         self.spreadsheet = RedisSpreadSheet(
-            self.r_server,
+            self.worker.r_server,
             self.spreadsheet_name,
             username=self.username,
             password=self.password,
@@ -169,12 +169,6 @@ class PublishTimeTrackCommand(BotCommand):
     def teardown_command(self):
         if self.spreadsheet:
             self.spreadsheet.scheduler.stop()
-
-    def get_command(self):
-        return "publish"
-
-    def get_pattern(self):
-        return r''
 
     def get_help(self):
         return "Publish the latest time tracker stats as a multifile Gist"
@@ -187,17 +181,27 @@ class PublishTimeTrackCommand(BotCommand):
 
 class TimeTrackCommand(BotCommand):
 
-    def __init__(self, r_server, config):
-        self.r_server = r_server
-        self.spreadsheet_name = config['spreadsheet_name']
-        self.username = config['username']
-        self.password = config['password']
-        self.validity = int(config['validity'])
-        self.spreadsheet = None
+    command = "log"
+
+    pattern = r"""
+            ^
+            (?P<time>\d+[m,h])              # how many hours
+            (@(?P<date>[a-z0-9\-]+))?       # back date 1 day at most
+            \s+                             #
+            (?P<project>[^,]+)              # column header
+            (,\s)?                          #
+            (?P<notes>.*)$                  # notes
+        """
 
     def setup_command(self):
+        self.spreadsheet_name = self.config['spreadsheet_name']
+        self.username = self.config['username']
+        self.password = self.config['password']
+        self.validity = int(self.config['validity'])
+        self.spreadsheet = None
+
         self.spreadsheet = RedisSpreadSheet(
-            self.r_server,
+            self.worker.r_server,
             self.spreadsheet_name,
             username=self.username,
             password=self.password,
@@ -207,20 +211,6 @@ class TimeTrackCommand(BotCommand):
     def teardown_command(self):
         if self.spreadsheet:
             self.spreadsheet.scheduler.stop()
-
-    def get_command(self):
-        return "log"
-
-    def get_pattern(self):
-        return r"""
-            ^
-            (?P<time>\d+[m,h])              # how many hours
-            (@(?P<date>[a-z0-9\-]+))?       # back date 1 day at most
-            \s+                             #
-            (?P<project>[^,]+)              # column header
-            (,\s)?                          #
-            (?P<notes>.*)$                  # notes
-        """
 
     def get_help(self):
         return "Format is <amount><units> <project>, <notes>. " \
@@ -253,7 +243,7 @@ class TimeTrackCommand(BotCommand):
                 'time': self.convert_time_unit(time),
             })
             self.spreadsheet.add_row(user_id, results)
-            returnValue("Logged, thanks.")
+            return "Logged, thanks."
         else:
             raise CommandFormatException()
 
