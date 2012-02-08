@@ -8,18 +8,13 @@ from vumibot.base import BotCommand, BotWorker
 
 class ToyBotCommand(BotCommand):
 
-    def __init__(self, r_server, config):
-        self.config = config
-        self.reply = config['reply']
+    pattern = r''
 
     def setup_command(self):
-        pass
+        self.reply = self.config['reply']
 
     def teardown_command(self):
         pass
-
-    def get_pattern(self):
-        return r''
 
     def get_help(self):
         return "Test the things."
@@ -29,18 +24,15 @@ class ToyBotCommand(BotCommand):
 
 
 class ToyBotCommand1(ToyBotCommand):
-    def get_command(self):
-        return "toy1"
+    command = "toy1"
 
 
 class ToyBotCommand2(ToyBotCommand):
-    def get_command(self):
-        return "toy2"
+    command = "toy2"
 
 
 class ToyBotCommandBoth(ToyBotCommand):
-    def get_command(self):
-        return "toy"
+    command = "toy"
 
 
 class ToyBotWorker1(BotWorker):
