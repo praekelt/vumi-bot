@@ -12,14 +12,12 @@ import base64
 from StringIO import StringIO
 from datetime import datetime, timedelta
 
-import redis
 from twisted.internet.defer import inlineCallbacks, returnValue
 
 from vumi.utils import http_request_full
-from vumi.application import ApplicationWorker
 from vumi.transports.scheduler import Scheduler
 
-from vumibot.base import BotCommand, CommandFormatException
+from vumibot.base import BotCommand, CommandFormatException, BotWorker
 
 
 class RedisSpreadSheet(object):
@@ -259,49 +257,10 @@ class TimeTrackCommand(BotCommand):
             raise CommandFormatException()
 
 
-class BotWorker(ApplicationWorker):
+class TimeTrackWorker(BotWorker):
 
-    COMMAND_PREFIX = '!'
-
-    def validate_config(self):
-        self.r_config = self.config.get('redis_config', {})
-        self.bot_commands = self.config.get('command_configs', {})
-
-    def setup_application(self):
-        self.r_server = redis.Redis(**self.r_config)
-        self.commands = [
-            TimeTrackCommand(self.r_server,
-                self.bot_commands.get('time_tracker')),
-            PublishTimeTrackCommand(self.r_server,
-                self.bot_commands.get('time_tracker')),
-        ]
-
-        for command in self.commands:
-            command.setup_command()
-
-    @inlineCallbacks
-    def teardown_application(self):
-        for command in self.commands:
-            yield command.teardown_command()
-
-    def get_commands(self, cls):
-        return [command for command in self.commands
-                    if isinstance(command, cls)]
-
-    @inlineCallbacks
-    def consume_user_message(self, message):
-        content = message['content']
-        if content.startswith(self.COMMAND_PREFIX):
-            prefix, cmd = content.split(self.COMMAND_PREFIX, 1)
-            for command_handler in self.commands:
-                try:
-                    reply = yield command_handler.parse(message.user(), cmd)
-                    if reply:
-                        self.reply_to(message, '%s: %s' % (
-                            message['from_addr'], reply))
-                except CommandFormatException, e:
-                    self.reply_to(message, "%s: that does not compute. %s" % (
-                        message['from_addr'], command_handler.get_help()))
-                except Exception, e:
-                    self.reply_to(message, '%s: eep! %s.' % (
-                        message['from_addr'], e))
+    COMMANDS = (
+        TimeTrackCommand,
+        PublishTimeTrackCommand,
+        )
+    FEATURE_NAME = "time_tracker"

@@ -10,8 +10,7 @@ from twisted.web.server import Site
 from vumi.application.tests.test_base import ApplicationTestCase
 from vumi.tests.utils import FakeRedis
 
-from vumibot.timetracker import TimeTrackCommand
-from vumibot.timetracker import BotWorker
+from vumibot.timetracker import TimeTrackCommand, TimeTrackWorker
 
 
 class GistResource(Resource):
@@ -28,7 +27,7 @@ class GistResource(Resource):
 
 class TimeTrackWorkerTestCase(ApplicationTestCase):
 
-    application_class = BotWorker
+    application_class = TimeTrackWorker
     timeout = 1
 
     @inlineCallbacks
@@ -81,6 +80,12 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
             'project': 'vumibot',
             'notes': 'writing tests',
         })
+
+        # This should probably be in its own test.
+        # We use a different queue name so that we can have multiple workers
+        # listening to the same routing key.
+        self.assertTrue("sphex.inbound.time_tracker" in self._amqp.queues)
+        self.assertTrue("sphex.inbound" not in self._amqp.queues)
 
     @inlineCallbacks
     def test_named_backdating(self):
