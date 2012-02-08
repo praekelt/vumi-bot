@@ -15,28 +15,34 @@ class CommandFormatException(Exception):
 
 class BotCommand(object):
 
+    @property
+    def command(self):
+        raise NotImplementedError("Subclasses should set this.")
+
+    @property
+    def pattern(self):
+        raise NotImplementedError("Subclasses should set this.")
+
+    def __init__(self, worker, config):
+        self.config = config
+        self.worker = worker
+
     def start_command(self):
         pass
 
     def stop_command(self):
         pass
 
-    def get_command(self):
-        raise NotImplementedError("Subclasses should implement this.")
-
-    def get_pattern(self):
-        raise NotImplementedError("Subclasses should implement this.")
-
     def get_compiled_pattern(self):
         if not hasattr(self, '_pattern'):
-            self._pattern = re.compile(self.get_pattern(), re.VERBOSE)
+            self._pattern = re.compile(self.pattern, re.VERBOSE)
         return self._pattern
 
     def get_help(self):
-        return "I grok %s" % (self.get_pattern(),)
+        return "I grok %s" % (self.pattern,)
 
     def accepts(self, command):
-        return command == self.get_command()
+        return command == self.command
 
     def handle_command(self, user_id, command_text):
         raise NotImplementedError('Subclasses must implement handle_command()')
@@ -64,9 +70,8 @@ class BotWorker(ApplicationWorker):
 
     def setup_application(self):
         self.r_server = redis.Redis(**self.r_config)
-        self.commands = [
-            cmd_cls(self.r_server, self.bot_commands.get(self.FEATURE_NAME))
-            for cmd_cls in self.COMMANDS]
+        self.commands = [cls(self, self.bot_commands.get(self.FEATURE_NAME))
+                         for cls in self.COMMANDS]
 
         for command in self.commands:
             command.setup_command()
