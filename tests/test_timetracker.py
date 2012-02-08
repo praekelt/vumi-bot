@@ -137,6 +137,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
             '%s: eep! day is out of range for month.' % (msg.user(),))
         worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(list(worksheet), [])
+        self.flushLoggedErrors()
 
     @inlineCallbacks
     def test_without_notes(self):

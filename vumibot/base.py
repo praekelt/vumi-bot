@@ -4,6 +4,7 @@ import re
 
 import redis
 from twisted.internet.defer import inlineCallbacks
+from twisted.python import log
 
 from vumi.message import TransportUserMessage, TransportEvent
 from vumi.application import ApplicationWorker
@@ -27,10 +28,10 @@ class BotCommand(object):
         self.config = config
         self.worker = worker
 
-    def start_command(self):
+    def setup_command(self):
         pass
 
-    def stop_command(self):
+    def teardown_command(self):
         pass
 
     def get_compiled_pattern(self):
@@ -57,6 +58,12 @@ class BotCommand(object):
         if self.accepts(command):
             return self.handle_command(user_id, command_text)
 
+    def parse_command(self, command_text):
+        match = self.get_compiled_pattern().match(command_text)
+        if not match:
+            raise CommandFormatException()
+        return match
+
 
 class BotWorker(ApplicationWorker):
 
@@ -68,13 +75,19 @@ class BotWorker(ApplicationWorker):
         self.r_config = self.config.get('redis_config', {})
         self.bot_commands = self.config.get('command_configs', {})
 
+    def setup_bot(self):
+        pass
+
+    @inlineCallbacks
     def setup_application(self):
         self.r_server = redis.Redis(**self.r_config)
         self.commands = [cls(self, self.bot_commands.get(self.FEATURE_NAME))
                          for cls in self.COMMANDS]
 
+        yield self.setup_bot()
+
         for command in self.commands:
-            command.setup_command()
+            yield command.setup_command()
 
     @inlineCallbacks
     def teardown_application(self):
@@ -92,8 +105,12 @@ class BotWorker(ApplicationWorker):
             prefix, cmd = content.split(self.COMMAND_PREFIX, 1)
             for command_handler in self.commands:
                 try:
-                    reply = yield command_handler.parse(message.user(), cmd)
-                    if reply:
+                    replies = yield command_handler.parse(message.user(), cmd)
+                    if not replies:
+                        replies = []
+                    elif isinstance(replies, basestring):
+                        replies = [replies]
+                    for reply in replies:
                         self.reply_to(message, '%s: %s' % (
                             message['from_addr'], reply))
                 except CommandFormatException, e:
@@ -102,6 +119,7 @@ class BotWorker(ApplicationWorker):
                 except Exception, e:
                     self.reply_to(message, '%s: eep! %s.' % (
                         message['from_addr'], e))
+                    log.err()
 
     @inlineCallbacks
     def _setup_transport_consumer(self):
