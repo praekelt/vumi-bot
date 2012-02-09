@@ -65,11 +65,11 @@ class GitHubWorker(BotWorker):
         return user, repo
 
     def format_pull_short(self, raw_pull):
-        return "%(number)s: %(title)s | %(url)s" % raw_pull
+        return "%(number)s: %(title)s | %(html_url)s" % raw_pull
 
     def format_pull(self, raw_pull):
         return [
-            "%(number)s: %(title)s | %(url)s" % raw_pull,
+            "%(number)s: %(title)s | %(html_url)s" % raw_pull,
             " | ".join([
                     "\x02merged\x02" if raw_pull['merged'] else "unmerged",
                     "created at: %(created_at)s",
