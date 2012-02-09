@@ -97,7 +97,6 @@ class GitHubWorker(BotWorker):
     def cmd_pull(self, message, params, repospec, pull_num):
         user, repo = self.parse_repospec(repospec)
         raw_pull = yield self.github.get_pull(user, repo, pull_num)
-        print raw_pull.get('message')
         if raw_pull.get('message') == 'Not Found':
             returnValue("Sorry, I can't seem to find that in %s/%s." % (
                     user, repo))
