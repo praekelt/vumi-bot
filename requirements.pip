@@ -1,3 +1,3 @@
--e git+git@github.com:praekelt/vumi@develop#egg=vumi
+-e git+https://github.com/praekelt/vumi.git@develop#egg=vumi
 supervisor
 gdata==2.0.16
