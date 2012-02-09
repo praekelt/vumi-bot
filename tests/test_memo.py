@@ -68,6 +68,16 @@ class TestMemoWorker(ApplicationTestCase):
             ])
 
     @inlineCallbacks
+    def test_leave_memo_cmd(self):
+        yield self.send('!tell memoed hey there', channel='#test')
+        self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
+                          [['testnick', 'hey there']])
+        replies = yield self.recv()
+        self.assertEqual(replies, [
+            ('reply', 'testnick: Sure thing, boss.'),
+            ])
+
+    @inlineCallbacks
     def test_leave_memo_nick_canonicalization(self):
         yield self.send('bot: tell MeMoEd hey there', channel='#test')
         self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
