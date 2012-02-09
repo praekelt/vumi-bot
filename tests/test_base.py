@@ -99,4 +99,5 @@ class BotWorkerTestCase(ApplicationTestCase):
     def test_non_commands(self):
         yield self.dispatch(self.mkmsg_in(content='!callable'))
         yield self.dispatch(self.mkmsg_in(content='!re'))
+        yield self.dispatch(self.mkmsg_in(content='!'))
         self.assertEqual([], self.get_msgs_content())

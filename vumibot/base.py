@@ -84,7 +84,7 @@ class BotWorker(ApplicationWorker):
         pass
 
     def handle_command(self, message, content):
-        command, params = (content.split(None, 1) + [''])[:2]
+        command, params = (content.split(None, 1) + ['', ''])[:2]
         handler = self.find_command(command)
         if not handler:
             return
