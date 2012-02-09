@@ -73,14 +73,14 @@ class GitHubWorker(BotWorker):
 
     def format_pull_short(self, raw_pull):
         pull = raw_pull.copy()
-        pull['_merged'] = "%smerged" % ('' if raw_pull['merged'] else 'un',)
+        merged = raw_pull.get('merged', False)
+        pull['_merged'] = "%smerged" % ('' if merged else 'un',)
         return "%(number)s: %(title)s | %(_merged)s | %(html_url)s" % pull
 
     def format_pull(self, raw_pull):
         return [
-            self.format_pull_short(self, raw_pull),
+            self.format_pull_short(raw_pull),
             " | ".join([
-                    "\x02%(_merged)s\x02",
                     "created at: %(created_at)s",
                     "changed files: %(changed_files)s",
                     "commits: %(commits)s",
