@@ -10,7 +10,7 @@ from twisted.internet.defer import inlineCallbacks, returnValue
 
 from vumi.utils import http_request_full
 
-from vumibot.base import BotCommand, BotWorker
+from vumibot.base import BotWorker, botcommand
 
 
 class GitHubAPI(object):
@@ -48,12 +48,13 @@ class GitHubAPI(object):
         returnValue(resp)
 
 
-class GitHubCommand(BotCommand):
+class GitHubWorker(BotWorker):
+    FEATURE_NAME = "github"
 
-    def setup_command(self):
-        self.default_user = self.worker.config['github_default_user']
-        self.default_repo = self.worker.config['github_default_repo']
-        self.github = self.worker.github
+    def setup_bot(self):
+        self.github = GitHubAPI(self.config['github_auth_token'])
+        self.default_user = self.config['github_default_user']
+        self.default_repo = self.config['github_default_repo']
 
     def parse_repospec(self, repospec):
         user, repo = ([''] + (repospec or '').split('/'))[-2:]
@@ -63,30 +64,8 @@ class GitHubCommand(BotCommand):
             repo = self.default_repo
         return user, repo
 
-
-class PullsCommand(GitHubCommand):
-    command = "pulls"
-    pattern = r'^(\S*)$'
-
-    def format_pull(self, raw_pull):
+    def format_pull_short(self, raw_pull):
         return "%(number)s: %(title)s | %(url)s" % raw_pull
-
-    @inlineCallbacks
-    def handle_command(self, user_id, command_text):
-        match = self.parse_command(command_text)
-        user, repo = self.parse_repospec(match.group(1))
-        raw_pulls = yield self.github.list_pulls(user, repo)
-
-        replies = ["Found %s pull requests found for %s/%s." % (
-                len(raw_pulls), user, repo)]
-        if raw_pulls:
-            replies.extend([self.format_pull(pull) for pull in raw_pulls])
-        returnValue(replies)
-
-
-class PullCommand(GitHubCommand):
-    command = "pull"
-    pattern = r'^(?:(\S+)\s+)?(\d+)$'
 
     def format_pull(self, raw_pull):
         return [
@@ -100,26 +79,26 @@ class PullCommand(GitHubCommand):
                     ]) % raw_pull,
             ]
 
+    @botcommand(r'(?P<repospec>\S*)')
     @inlineCallbacks
-    def handle_command(self, user_id, command_text):
-        match = self.parse_command(command_text)
-        user, repo = self.parse_repospec(match.group(1))
-        number = match.group(2)
-        raw_pull = yield self.github.get_pull(user, repo, number)
+    def cmd_pulls(self, message, params, repospec):
+        user, repo = self.parse_repospec(repospec)
+        raw_pulls = yield self.github.list_pulls(user, repo)
+
+        replies = ["Found %s pull requests found for %s/%s." % (
+                len(raw_pulls), user, repo)]
+        if raw_pulls:
+            replies.extend([self.format_pull_short(pull)
+                            for pull in raw_pulls])
+        returnValue(replies)
+
+    @botcommand(r'^(?:(?P<repospec>\S+)\s+)?(?P<pull_num>\d+)$')
+    @inlineCallbacks
+    def cmd_pull(self, message, params, repospec, pull_num):
+        user, repo = self.parse_repospec(repospec)
+        raw_pull = yield self.github.get_pull(user, repo, pull_num)
         print raw_pull.get('message')
         if raw_pull.get('message') == 'Not Found':
             returnValue("Sorry, I can't seem to find that in %s/%s." % (
                     user, repo))
         returnValue(self.format_pull(raw_pull))
-
-
-class GitHubWorker(BotWorker):
-
-    COMMANDS = (
-        PullsCommand,
-        PullCommand,
-        )
-    FEATURE_NAME = "time_tracker"
-
-    def setup_bot(self):
-        self.github = GitHubAPI(self.config['github_auth_token'])
