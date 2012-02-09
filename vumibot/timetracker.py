@@ -4,6 +4,7 @@
 Simplest possible time tracker ever
 """
 
+import re
 import time
 import uuid
 import csv
@@ -12,12 +13,13 @@ import base64
 from StringIO import StringIO
 from datetime import datetime, timedelta
 
+import redis
 from twisted.internet.defer import inlineCallbacks, returnValue
 
 from vumi.utils import http_request_full
 from vumi.transports.scheduler import Scheduler
 
-from vumibot.base import BotCommand, CommandFormatException, BotWorker
+from vumibot.base import BotWorker, botcommand
 
 
 class RedisSpreadSheet(object):
@@ -147,75 +149,32 @@ class RedisSpreadSheet(object):
             url.encode('utf8'), headers=self.gist_headers, method="DELETE")
 
 
-class PublishTimeTrackCommand(BotCommand):
+class TimeTrackWorker(BotWorker):
 
-    command = "publish"
-    pattern = r''
+    FEATURE_NAME = "time_tracker"
 
-    def setup_command(self):
+    def validate_config(self):
+        self.r_config = self.config.get('redis_config', {})
+
+    def setup_bot(self):
+        self.r_server = redis.Redis(**self.r_config)
+
         self.spreadsheet_name = self.config['spreadsheet_name']
         self.username = self.config['username']
         self.password = self.config['password']
         self.validity = int(self.config['validity'])
 
         self.spreadsheet = RedisSpreadSheet(
-            self.worker.r_server,
+            self.r_server,
             self.spreadsheet_name,
             username=self.username,
             password=self.password,
             validity=self.validity
         )
 
-    def teardown_command(self):
+    def teardown_bot(self):
         if self.spreadsheet:
             self.spreadsheet.scheduler.stop()
-
-    def get_help(self):
-        return "Publish the latest time tracker stats as a multifile Gist"
-
-    @inlineCallbacks
-    def handle_command(self, user_id, command_text):
-        url = yield self.spreadsheet.publish()
-        returnValue(url)
-
-
-class TimeTrackCommand(BotCommand):
-
-    command = "log"
-
-    pattern = r"""
-            ^
-            (?P<time>\d+[m,h])              # how many hours
-            (@(?P<date>[a-z0-9\-]+))?       # back date 1 day at most
-            \s+                             #
-            (?P<project>[^,]+)              # column header
-            (,\s)?                          #
-            (?P<notes>.*)$                  # notes
-        """
-
-    def setup_command(self):
-        self.spreadsheet_name = self.config['spreadsheet_name']
-        self.username = self.config['username']
-        self.password = self.config['password']
-        self.validity = int(self.config['validity'])
-        self.spreadsheet = None
-
-        self.spreadsheet = RedisSpreadSheet(
-            self.worker.r_server,
-            self.spreadsheet_name,
-            username=self.username,
-            password=self.password,
-            validity=self.validity
-        )
-
-    def teardown_command(self):
-        if self.spreadsheet:
-            self.spreadsheet.scheduler.stop()
-
-    def get_help(self):
-        return "Format is <amount><units> <project>, <notes>. " \
-                "Where units can be d,h,m. " \
-                "Backdate with `4h@yesterday` or `4h@yyyy-mm-dd`"
 
     def convert_date(self, named_date):
         if named_date == "yesterday":
@@ -231,27 +190,33 @@ class TimeTrackCommand(BotCommand):
         value, unit = named_time[0:-1], named_time[-1]
         return formatters.get(unit)(value)
 
-    def handle_command(self, user_id, command_text):
-        match = self.get_compiled_pattern().match(command_text)
-        if match:
-            results = match.groupdict()
-            date = results['date']
-            time = results['time']
-            results.update({
-                'date': (self.convert_date(date) if date
-                            else datetime.utcnow().date()),
-                'time': self.convert_time_unit(time),
-            })
-            self.spreadsheet.add_row(user_id, results)
-            return "Logged, thanks."
-        else:
-            raise CommandFormatException()
+    @botcommand(re.compile(r"""
+        ^
+        (?P<time>\d+[m,h])              # how many hours
+        (@(?P<date>[a-z0-9\-]+))?       # back date 1 day at most
+        \s+                             #
+        (?P<project>[^,]+)              # column header
+        (,\s)?                          #
+        (?P<notes>.*)$                  # notes
+        """, re.VERBOSE))
+    def cmd_log(self, message, params, **results):
+        ("Format is <amount><units> <project>, <notes>. "
+         "Where units can be h,m. "
+         "Backdate with `4h@yesterday` or `4h@yyyy-mm-dd`")
 
+        date = results['date']
+        time = results['time']
+        results.update({
+            'date': (self.convert_date(date) if date
+                        else datetime.utcnow().date()),
+            'time': self.convert_time_unit(time),
+        })
+        self.spreadsheet.add_row(message.user(), results)
+        return "Logged, thanks."
 
-class TimeTrackWorker(BotWorker):
-
-    COMMANDS = (
-        TimeTrackCommand,
-        PublishTimeTrackCommand,
-        )
-    FEATURE_NAME = "time_tracker"
+    @botcommand
+    @inlineCallbacks
+    def cmd_publish(self, message, params):
+        "Publish the latest time tracker stats as a multifile Gist"
+        url = yield self.spreadsheet.publish()
+        returnValue(url)

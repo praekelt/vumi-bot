@@ -1,48 +1,41 @@
+import re
+
 from twisted.internet.defer import inlineCallbacks
 
 from vumi.application.tests.test_base import ApplicationTestCase
 from vumi.tests.utils import FakeRedis
 
-from vumibot.base import BotCommand, BotWorker
-
-
-class ToyBotCommand(BotCommand):
-
-    pattern = r''
-
-    def setup_command(self):
-        self.reply = self.config['reply']
-
-    def teardown_command(self):
-        pass
-
-    def get_help(self):
-        return "Test the things."
-
-    def handle_command(self, user_id, command_text):
-        return self.reply
-
-
-class ToyBotCommand1(ToyBotCommand):
-    command = "toy1"
-
-
-class ToyBotCommand2(ToyBotCommand):
-    command = "toy2"
-
-
-class ToyBotCommandBoth(ToyBotCommand):
-    command = "toy"
+from vumibot.base import BotWorker, botcommand
 
 
 class ToyBotWorker1(BotWorker):
-    COMMANDS = (ToyBotCommandBoth, ToyBotCommand1)
     FEATURE_NAME = "toy1"
+
+    @botcommand
+    def cmd_toy(self, message, params):
+        return self.config['reply']
+
+    @botcommand
+    def cmd_toy1(self, message, params):
+        return self.config['reply']
+
+    def cmd_callable(self, message, params):
+        "This is callable, but has not `pattern` attribute."
 
 
 class ToyBotWorker2(BotWorker):
-    COMMANDS = (ToyBotCommandBoth, ToyBotCommand2)
     FEATURE_NAME = "toy2"
+
+    @botcommand(r'')
+    def cmd_toy(self, message, params):
+        return self.config['reply']
+
+    @botcommand(r'')
+    def cmd_toy2(self, message, params):
+        return self.config['reply']
+
+    cmd_re = re.compile(
+        "This has a `pattern` attribute, but is not callable.")
 
 
 class BotWorkerTestCase(ApplicationTestCase):
@@ -57,21 +50,13 @@ class BotWorkerTestCase(ApplicationTestCase):
 
         self.app1 = yield self.get_application({
                 'worker_name': 'test_app1',
-                'command_configs': {
-                    'toy1': {
-                        'reply': 'foo',
-                        },
-                    },
+                'reply': 'foo',
                 }, ToyBotWorker1)
         self.app1.r_server = self.fake_redis
 
         self.app2 = yield self.get_application({
                 'worker_name': 'test_app2',
-                'command_configs': {
-                    'toy2': {
-                        'reply': 'bar',
-                        },
-                    },
+                'reply': 'bar',
                 }, ToyBotWorker2)
         self.app1.r_server = self.fake_redis
 
@@ -80,11 +65,18 @@ class BotWorkerTestCase(ApplicationTestCase):
         yield super(BotWorkerTestCase, self).tearDown()
         self.fake_redis.teardown()
 
+    def get_msgs_content(self):
+        return [m['content'] for m in self.get_dispatched_messages()]
+
+    def mkmsg_in(self, content):
+        return super(BotWorkerTestCase, self).mkmsg_in(
+            content=content, from_addr="nick")
+
     @inlineCallbacks
     def test_both(self):
         msg = self.mkmsg_in(content='!toy')
         yield self.dispatch(msg)
-        self.assertEqual(2, len(self.get_dispatched_messages()))
+        self.assertEqual(['nick: foo', 'nick: bar'], self.get_msgs_content())
 
         # This should probably be in its own test.
         # We use a different queue name so that we can have multiple workers
@@ -97,8 +89,14 @@ class BotWorkerTestCase(ApplicationTestCase):
     def test_each(self):
         msg = self.mkmsg_in(content='!toy1')
         yield self.dispatch(msg)
-        self.assertEqual(1, len(self.get_dispatched_messages()))
+        self.assertEqual(['nick: foo'], self.get_msgs_content())
 
         msg = self.mkmsg_in(content='!toy2')
         yield self.dispatch(msg)
-        self.assertEqual(2, len(self.get_dispatched_messages()))
+        self.assertEqual(['nick: foo', 'nick: bar'], self.get_msgs_content())
+
+    @inlineCallbacks
+    def test_non_commands(self):
+        yield self.dispatch(self.mkmsg_in(content='!callable'))
+        yield self.dispatch(self.mkmsg_in(content='!re'))
+        self.assertEqual([], self.get_msgs_content())

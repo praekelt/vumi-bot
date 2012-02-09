@@ -10,7 +10,7 @@ from twisted.web.server import Site
 from vumi.application.tests.test_base import ApplicationTestCase
 from vumi.tests.utils import FakeRedis
 
-from vumibot.timetracker import TimeTrackCommand, TimeTrackWorker
+from vumibot.timetracker import TimeTrackWorker
 
 
 class GistResource(Resource):
@@ -42,22 +42,16 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
 
         self.app = yield self.get_application({
             'worker_name': 'test_timetracker',
-            'command_configs': {
-                'time_tracker': {
-                    'spreadsheet_name': 'some-spreadsheet',
-                    'username': 'some-user',
-                    'password': 'some-password',
-                    'validity': '10',
-                }
-            }
-        })
+            'spreadsheet_name': 'some-spreadsheet',
+            'username': 'some-user',
+            'password': 'some-password',
+            'validity': '10',
+            })
         self.fake_redis = FakeRedis()
         self.app.r_server = self.fake_redis
 
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
-        tt_command.r_server = self.fake_redis
-        tt_command.spreadsheet.r_server = self.fake_redis
-        tt_command.spreadsheet.gist_url = self.server_url
+        self.app.spreadsheet.r_server = self.fake_redis
+        self.app.spreadsheet.gist_url = self.server_url
 
         self.today = datetime.utcnow().date()
         self.yesterday = self.today - timedelta(days=1)
@@ -72,8 +66,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
     def test_logging(self):
         msg = self.mkmsg_in(content='!log 4h vumibot, writing tests')
         yield self.dispatch(msg)
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
-        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        [(key, data)] = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(data, {
             'date': self.today.isoformat(),
             'time': str(4 * 60 * 60),
@@ -92,8 +85,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(
             content='!log 4h@yesterday vumibot, writing tests')
         yield self.dispatch(msg)
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
-        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        [(key, data)] = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(data, {
             'date': self.yesterday.isoformat(),
             'time': str(4 * 60 * 60),
@@ -106,8 +98,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(
             content='!log 4h@2012-2-4 vumibot, writing tests')
         yield self.dispatch(msg)
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
-        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        [(key, data)] = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(data, {
             'date': '2012-02-04',
             'time': str(4 * 60 * 60),
@@ -120,11 +111,10 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log foo bar baz')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
         self.assertEqual(response['content'],
             '%s: that does not compute. %s' % (
-                msg.user(), tt_command.get_help()))
-        worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
+                msg.user(), self.app.cmd_log.__doc__))
+        worksheet = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(list(worksheet), [])
 
     @inlineCallbacks
@@ -132,18 +122,16 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log 4h@2012-2-31 vumibot, writing tests')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
         self.assertEqual(response['content'],
             '%s: eep! day is out of range for month.' % (msg.user(),))
-        worksheet = tt_command.spreadsheet.get_worksheet(msg.user())
+        worksheet = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(list(worksheet), [])
 
     @inlineCallbacks
     def test_without_notes(self):
         msg = self.mkmsg_in(content='!log 4h vumibot')
         yield self.dispatch(msg)
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
-        [(key, data)] = tt_command.spreadsheet.get_worksheet(msg.user())
+        [(key, data)] = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(data, {
             'date': self.today.isoformat(),
             'time': str(4 * 60 * 60),
@@ -161,9 +149,8 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
                     from_addr=user)
                 yield self.dispatch(msg)
 
-        [tt_command] = self.app.get_commands(TimeTrackCommand)
-        response = yield tt_command.spreadsheet.publish()
+        response = yield self.app.spreadsheet.publish()
         self.assertEqual(response, 'http://web.localhost/id')
         posted_payload = json.loads(self.gist_resource.captured_post_data)
         self.assertEqual(posted_payload['files'],
-            tt_command.spreadsheet.get_gist_payload()['files'])
+            self.app.spreadsheet.get_gist_payload()['files'])
