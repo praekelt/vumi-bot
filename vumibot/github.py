@@ -72,19 +72,28 @@ class GitHubWorker(BotWorker):
         return user, repo
 
     def format_pull_short(self, raw_pull):
-        return "%(number)s: %(title)s | %(html_url)s" % raw_pull
+        pull = raw_pull.copy()
+        pull['_merged'] = "%smerged" % ('' if raw_pull['merged'] else 'un',)
+        return "%(number)s: %(title)s | %(_merged)s | %(html_url)s" % pull
 
     def format_pull(self, raw_pull):
         return [
-            "%(number)s: %(title)s | %(html_url)s" % raw_pull,
+            self.format_pull_short(self, raw_pull),
             " | ".join([
-                    "\x02merged\x02" if raw_pull['merged'] else "unmerged",
+                    "\x02%(_merged)s\x02",
                     "created at: %(created_at)s",
                     "changed files: %(changed_files)s",
                     "commits: %(commits)s",
                     "comments: %(review_comments)s",
                     ]) % raw_pull,
             ]
+
+    def format_issue_short(self, raw_issue):
+        return " | ".join([
+                "%(number)s: %(title)s",
+                "\x02%(state)s\x02",
+                "%(html_url)s",
+                ]) % raw_issue
 
     def format_issue(self, raw_issue):
         issue = raw_issue.copy()
@@ -93,9 +102,8 @@ class GitHubWorker(BotWorker):
             raw_issue['assignee'] or {'login': '\x02nobody\x02'})['login']
         issue['_labels'] = ', '.join([l['name'] for l in raw_issue['labels']])
         return [
-            "%(number)s: %(title)s | %(html_url)s" % issue,
+            self.format_issue_short(raw_issue),
             " | ".join([
-                    "\x02%(state)s\x02",
                     "created at: %(created_at)s",
                     "reporter: %(_reporter)s",
                     "assigned: %(_assigned)s",
