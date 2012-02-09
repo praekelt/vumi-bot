@@ -47,6 +47,13 @@ class GitHubAPI(object):
         resp = yield self._call_api(url)
         returnValue(resp)
 
+    @inlineCallbacks
+    def get_issue(self, user, repo, issue):
+        url = "repos/%(user)s/%(repo)s/issues/%(issue)s" % {
+            'user': user, 'repo': repo, 'issue': issue}
+        resp = yield self._call_api(url)
+        returnValue(resp)
+
 
 class GitHubWorker(BotWorker):
     FEATURE_NAME = "github"
@@ -79,6 +86,24 @@ class GitHubWorker(BotWorker):
                     ]) % raw_pull,
             ]
 
+    def format_issue(self, raw_issue):
+        issue = raw_issue.copy()
+        issue['_reporter'] = raw_issue['user']['login']
+        issue['_assigned'] = (
+            raw_issue['assignee'] or {'login': '\x02nobody\x02'})['login']
+        issue['_labels'] = ', '.join([l['name'] for l in raw_issue['labels']])
+        return [
+            "%(number)s: %(title)s | %(html_url)s" % issue,
+            " | ".join([
+                    "\x02%(state)s\x02",
+                    "created at: %(created_at)s",
+                    "reporter: %(_reporter)s",
+                    "assigned: %(_assigned)s",
+                    "comments: %(comments)s",
+                    "labels: %(_labels)s",
+                    ]) % issue,
+            ]
+
     @botcommand(r'(?P<repospec>\S*)')
     @inlineCallbacks
     def cmd_pulls(self, message, params, repospec):
@@ -101,3 +126,13 @@ class GitHubWorker(BotWorker):
             returnValue("Sorry, I can't seem to find that in %s/%s." % (
                     user, repo))
         returnValue(self.format_pull(raw_pull))
+
+    @botcommand(r'^(?:(?P<repospec>\S+)\s+)?(?P<issue_num>\d+)$')
+    @inlineCallbacks
+    def cmd_issue(self, message, params, repospec, issue_num):
+        user, repo = self.parse_repospec(repospec)
+        raw_issue = yield self.github.get_issue(user, repo, issue_num)
+        if raw_issue.get('message') == 'Not Found':
+            returnValue("Sorry, I can't seem to find that in %s/%s." % (
+                    user, repo))
+        returnValue(self.format_issue(raw_issue))
