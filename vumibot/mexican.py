@@ -8,7 +8,7 @@ from vumibot.base import BotWorker, botcommand
 
 
 class MexicanWorker(BotWorker):
-    FEATURE_NAME = "github"
+    FEATURE_NAME = "mexican"
 
     @botcommand(r'(?P<subcommand>\w*)!?')
     def cmd_mexican(self, message, params, subcommand):
