@@ -101,3 +101,8 @@ class BotWorkerTestCase(ApplicationTestCase):
         yield self.dispatch(self.mkmsg_in(content='!re'))
         yield self.dispatch(self.mkmsg_in(content='!'))
         self.assertEqual([], self.get_msgs_content())
+
+    @inlineCallbacks
+    def test_prefix_only(self):
+        yield self.dispatch(self.mkmsg_in(content='!'))
+        self.assertEqual([], self.get_msgs_content())

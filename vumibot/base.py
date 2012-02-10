@@ -63,22 +63,31 @@ class BotWorker(ApplicationWorker):
 
     @inlineCallbacks
     def consume_user_message(self, message):
+        # Note to future debuggers: This gets called for every worker. If
+        # there's a bug in BotWorker that causes exceptions, you'll get one for
+        # each worker, not just one. (And now you don't need to spend nearly an
+        # hour trying to figure it out, like I just did.)
+        replies = []
+
         try:
             rpl = yield self.handle_message(message)
-            replies = self.listify_replies(rpl)
+            replies.extend(self.listify_replies(rpl))
+        except Exception:
+            log.err()
 
+        try:
             content = message['content']
             if content.startswith(self.command_prefix):
                 content = message['content'][len(self.command_prefix):]
                 rpl = yield self.handle_command(message, content)
                 replies.extend(self.listify_replies(rpl))
-
-            for reply in replies:
-                self.reply_to(message, '%s: %s' % (
-                        message['from_addr'], reply))
         except Exception, e:
-            self.reply_to(message, '%s: eep! %s.' % (
-                    message['from_addr'], e))
+            log.err()
+            replies.append('eep! %s: %s.' % (type(e).__name__, e))
+
+        for reply in replies:
+            self.reply_to(message, '%s: %s' % (
+                    message['from_addr'], reply))
 
     def handle_message(self, message):
         pass
