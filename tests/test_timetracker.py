@@ -122,10 +122,13 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!log 4h@2012-2-31 vumibot, writing tests')
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
-        self.assertEqual(response['content'],
-            '%s: eep! day is out of range for month.' % (msg.user(),))
+        self.assertEqual(
+            response['content'],
+            '%s: eep! ValueError: day is out of range for month.' % (
+                msg.user(),))
         worksheet = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(list(worksheet), [])
+        self.flushLoggedErrors()
 
     @inlineCallbacks
     def test_without_notes(self):
