@@ -112,14 +112,18 @@ class GitHubWorker(BotWorker):
                     ]) % issue,
             ]
 
+    def format_found(self, num, thing, repospec):
+        return "Found %s %s%s for %s." % (
+            num, thing, "s" if num != 1 else "", repospec)
+
     @botcommand(r'(?P<repospec>\S*)')
     @inlineCallbacks
     def cmd_pulls(self, message, params, repospec):
         user, repo = self.parse_repospec(repospec)
         raw_pulls = yield self.github.list_pulls(user, repo)
 
-        replies = ["Found %s pull requests found for %s/%s." % (
-                len(raw_pulls), user, repo)]
+        replies = [self.format_found(
+                len(raw_pulls), "pull request", "%s/%s" % (user, repo))]
         if raw_pulls:
             replies.extend([self.format_pull_short(pull)
                             for pull in raw_pulls])
