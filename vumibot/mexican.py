@@ -1,7 +1,8 @@
 # -*- test-case-name: tests.test_mexican -*-
+# -*- coding: utf-8 -*-
 
 """
-Stuff Mexicans do.
+Mexican commands.
 """
 
 from vumibot.base import BotWorker, botcommand
@@ -14,7 +15,7 @@ class MexicanWorker(BotWorker):
     def cmd_mexican(self, message, params, subcommand):
         handler = getattr(self, 'mexican_%s' % subcommand, None)
         if not handler:
-            return "I don't think mexicans know how to do that."
+            return u"¿Qué?"
         return handler(message)
 
     def mexican_wave(self, message):
