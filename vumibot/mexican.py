@@ -13,7 +13,6 @@ class MexicanWorker(BotWorker):
     @botcommand(r'(?P<subcommand>\w*)!?')
     def cmd_mexican(self, message, params, subcommand):
         handler = getattr(self, 'mexican_%s' % subcommand, None)
-        print handler
         if not handler:
             return "I don't think mexicans know how to do that."
         return handler(message)
