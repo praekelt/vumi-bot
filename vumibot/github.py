@@ -13,6 +13,52 @@ from vumi.utils import http_request_full
 from vumibot.base import BotWorker, botcommand
 
 
+class ParamExtractor(object):
+    def __init__(self):
+        self.params = []
+
+    def __getitem__(self, key):
+        if key not in self.params:
+            self.params.append(key)
+        return key
+
+
+def extract_params(text):
+    extractor = ParamExtractor()
+    text % extractor
+    return extractor.params
+
+
+# This stuff is some weird magic to make it easier to define API calls later.
+class APICommand(object):
+    def __init__(self, url, method='GET'):
+        self.url = url
+        self.method = method
+        self.url_params = extract_params(url)
+
+    def parse_params(self, args, kw):
+        param_names = list(self.url_params) + ['body_dict']
+        params = dict(zip(param_names, args))
+        params.update(kw)
+        params.setdefault('body_dict', None)
+        assert set(param_names) == set(params.keys())
+        return params, params.pop('body_dict')
+
+    def __call__(self, *args, **kw):
+        params, body_dict = self.parse_params(args, kw)
+        return (self.url % params, body_dict, self.method)
+
+
+def mkapi(url, method='GET'):
+    api_command = APICommand(url, method)
+
+    def cmd(self, *args, **kw):
+        params = api_command(*args, **kw)
+        return self._call_api(*params)
+
+    return cmd
+
+
 class GitHubAPI(object):
     URL_BASE = "https://api.github.com/"
 
@@ -34,25 +80,11 @@ class GitHubAPI(object):
     def _parse_response(self, response):
         return json.loads(response.delivered_body)
 
-    @inlineCallbacks
-    def list_pulls(self, user, repo):
-        resp = yield self._call_api("repos/%(user)s/%(repo)s/pulls" % {
-                'user': user, 'repo': repo})
-        returnValue(resp)
+    list_issues = mkapi("repos/%(user)s/%(repo)s/issues")
+    get_issue = mkapi("repos/%(user)s/%(repo)s/issues/%(issue)s")
 
-    @inlineCallbacks
-    def get_pull(self, user, repo, pull):
-        url = "repos/%(user)s/%(repo)s/pulls/%(pull)s" % {
-            'user': user, 'repo': repo, 'pull': pull}
-        resp = yield self._call_api(url)
-        returnValue(resp)
-
-    @inlineCallbacks
-    def get_issue(self, user, repo, issue):
-        url = "repos/%(user)s/%(repo)s/issues/%(issue)s" % {
-            'user': user, 'repo': repo, 'issue': issue}
-        resp = yield self._call_api(url)
-        returnValue(resp)
+    list_pulls = mkapi("repos/%(user)s/%(repo)s/pulls")
+    get_pull = mkapi("repos/%(user)s/%(repo)s/pulls/%(pull)s")
 
 
 class GitHubWorker(BotWorker):
