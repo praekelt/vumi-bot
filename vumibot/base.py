@@ -21,8 +21,13 @@ def botcommand(func_or_pattern):
     def patternator(func):
         func.pattern = pattern
         return func
-
     return patternator
+
+    def parse_command(self, command_text):
+        match = self.get_compiled_pattern().match(command_text)
+        if not match:
+            raise CommandFormatException()
+        return match
 
 
 class BotWorker(ApplicationWorker):
