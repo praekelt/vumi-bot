@@ -31,9 +31,10 @@ def extract_params(text):
 
 # This stuff is some weird magic to make it easier to define API calls later.
 class APICommand(object):
-    def __init__(self, url, method='GET'):
+    def __init__(self, url, method='GET', auth=False):
         self.url = url
         self.method = method
+        self.auth = auth
         self.url_params = extract_params(url)
 
     def parse_params(self, args, kw):
@@ -46,7 +47,7 @@ class APICommand(object):
 
     def __call__(self, *args, **kw):
         params, body_dict = self.parse_params(args, kw)
-        return (self.url % params, body_dict, self.method)
+        return (self.url % params, body_dict, self.method, self.auth)
 
 
 def mkapi(url, method='GET'):
@@ -62,22 +63,26 @@ def mkapi(url, method='GET'):
 class GitHubAPI(object):
     URL_BASE = "https://api.github.com/"
 
-    def __init__(self, auth_token):
+    def __init__(self, auth_token, url_base=None):
         self.auth_token = auth_token
+        self.url_base = url_base or self.URL_BASE
 
-    def _call_api(self, path, data=None, method='GET'):
-        url = "%s%s" % (self.URL_BASE, path)
+    def _call_api(self, path, data=None, method='GET', auth=False):
+        url = "%s%s" % (self.url_base, path)
         if isinstance(url, unicode):
             url = url.encode('utf-8')
         headers = {
             'User-Agent': "vumibot",
-            'Authorization': "bearer %s" % (self.auth_token,),
             }
+        if auth:
+            headers['Authorization'] = "bearer %s" % (self.auth_token,)
         d = http_request_full(
             url, json.dumps(data), headers, method)
         return d.addCallback(self._parse_response)
 
     def _parse_response(self, response):
+        if getattr(self, 'DEBUG', None):
+            print "=====\n%s\n=====" % response.delivered_body
         return json.loads(response.delivered_body)
 
     list_issues = mkapi("repos/%(user)s/%(repo)s/issues")
@@ -90,10 +95,14 @@ class GitHubAPI(object):
 class GitHubWorker(BotWorker):
     FEATURE_NAME = "github"
 
-    def setup_bot(self):
-        self.github = GitHubAPI(self.config['github_auth_token'])
+    def validate_config(self):
+        self.auth_token = self.config['github_auth_token']
+        self.base_url = self.config.get('github_base_url')
         self.default_user = self.config['github_default_user']
         self.default_repo = self.config['github_default_repo']
+
+    def setup_bot(self):
+        self.github = GitHubAPI(self.auth_token, self.base_url)
 
     def parse_repospec(self, repospec):
         user, repo = ([''] + (repospec or '').split('/'))[-2:]
