@@ -1,5 +1,5 @@
 import json
-import os.path
+from pkg_resources import resource_stream
 
 from twisted.internet import reactor
 from twisted.internet.defer import inlineCallbacks
@@ -11,8 +11,8 @@ from vumi.application.tests.test_base import ApplicationTestCase
 from vumibot.github import GitHubAPI, GitHubWorker, extract_params
 
 
-GITHUB_RESPONSES = json.load(open(
-    os.path.join(os.path.dirname(__file__), 'github_responses.json')))
+GITHUB_RESPONSES = json.load(
+    resource_stream(__name__, 'github_responses.json'))
 
 
 class GitHubHelpersTestCase(TestCase):
