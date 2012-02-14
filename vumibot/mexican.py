@@ -5,6 +5,8 @@
 Mexican commands.
 """
 
+import random
+
 from vumibot.base import BotWorker, botcommand
 
 
@@ -31,3 +33,13 @@ class MexicanWorker(BotWorker):
         reply = message.reply("points a pistol at %s." % message.user())
         reply['helper_metadata']['irc'] = {'irc_command': 'ACTION'}
         self.transport_publisher.publish_message(reply)
+
+    def mexican_food(self, message):
+        food = random.choice([
+                "Nachos",
+                "Tacos",
+                "Quesadillas",
+                "Burritos",
+                "Tamales",
+                ])
+        return u"¡%s!" % food

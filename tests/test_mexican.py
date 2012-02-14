@@ -39,3 +39,11 @@ class MexicanWorkerTestCase(ApplicationTestCase):
         self.assertEqual("points a pistol at jose.", msg['content'])
         self.assertEqual(
             "ACTION", msg['helper_metadata']['irc']['irc_command'])
+
+    @inlineCallbacks
+    def test_food(self):
+        for _ in range(50):
+            msg = self.mkmsg_in(content='!mexican food', from_addr='jose')
+            yield self.dispatch(msg)
+        msgs = [m['content'] for m in self.get_dispatched_messages()]
+        self.assertTrue(1 < len(set(msgs)) <= 5)
