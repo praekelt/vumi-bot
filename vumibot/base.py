@@ -34,6 +34,7 @@ class BotWorker(ApplicationWorker):
 
     DEFAULT_COMMAND_PREFIX = '!'
     FEATURE_NAME = None
+    NAME_PREFIX_RE = re.compile(r'^\S+:\s+(.*)$')
 
     def setup_application(self):
         self.command_prefix = self.config.get(
@@ -48,6 +49,23 @@ class BotWorker(ApplicationWorker):
 
     def teardown_bot(self):
         pass
+
+    def parse_user_message(self, message):
+        irc_metadata = message['helper_metadata'].get('irc', {})
+        content = message['content']
+
+        is_command = False
+
+        if content.startswith(self.command_prefix):
+            is_command = True
+            content = content[len(self.command_prefix):]
+        elif irc_metadata.get('addressed_to_transport', True):
+            is_command = True
+            match = self.NAME_PREFIX_RE.match(content)
+            if match:
+                content = match.group(1)
+
+        return (is_command, content)
 
     def find_command(self, command_name):
         handler = getattr(self, 'cmd_%s' % (command_name,), None)
@@ -76,9 +94,8 @@ class BotWorker(ApplicationWorker):
             log.err()
 
         try:
-            content = message['content']
-            if content.startswith(self.command_prefix):
-                content = message['content'][len(self.command_prefix):]
+            is_command, content = self.parse_user_message(message)
+            if is_command:
                 rpl = yield self.handle_command(message, content)
                 replies.extend(self.listify_replies(rpl))
         except Exception, e:
