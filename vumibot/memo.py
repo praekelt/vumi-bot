@@ -7,7 +7,7 @@ import json
 import redis
 from twisted.python import log
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks
 
 from vumibot.base import BotWorker, botcommand
 

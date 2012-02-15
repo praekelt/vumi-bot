@@ -34,7 +34,6 @@ class BotWorker(ApplicationWorker):
 
     DEFAULT_COMMAND_PREFIX = '!'
     FEATURE_NAME = None
-    NAME_PREFIX_RE = re.compile(r'^\S+:\s+(.*)$')
 
     def setup_application(self):
         self.command_prefix = self.config.get(
@@ -61,9 +60,9 @@ class BotWorker(ApplicationWorker):
             content = content[len(self.command_prefix):]
         elif irc_metadata.get('addressed_to_transport', True):
             is_command = True
-            match = self.NAME_PREFIX_RE.match(content)
-            if match:
-                content = match.group(1)
+            bot_name = irc_metadata.get('transport_nickname', 'bot')
+            if content.startswith(bot_name):
+                content = content.split(None, 1)[-1]
 
         return (is_command, content)
 
