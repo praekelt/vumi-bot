@@ -121,8 +121,10 @@ class BotWorkerTestCase(ApplicationTestCase):
 
     @inlineCallbacks
     def test_named_commands(self):
+        # Addressed to the bot by name. (Channel or private message.)
         yield self.dispatch(self.mkmsg_in_irc('bot: toy1', True))
         self.assertEqual(['nick: foo'], self.get_msgs_content())
+        # No name prefix, but addressed directly to the bot in private.
         yield self.dispatch(self.mkmsg_in_irc('toy1', True))
         self.assertEqual(['nick: foo', 'nick: foo'], self.get_msgs_content())
 
