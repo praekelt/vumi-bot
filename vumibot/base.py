@@ -97,8 +97,7 @@ class BotWorker(ApplicationWorker):
             replies.append('eep! %s: %s.' % (type(e).__name__, e))
 
         for reply in replies:
-            self.reply_to(message, '%s: %s' % (
-                    message['from_addr'], reply))
+            self.reply_to(message, reply)
 
     def handle_message(self, message):
         pass
