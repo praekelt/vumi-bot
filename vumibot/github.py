@@ -101,6 +101,7 @@ class GitHubWorker(BotWorker):
         self.base_url = self.config.get('github_base_url')
         self.default_user = self.config['github_default_user']
         self.default_repo = self.config['github_default_repo']
+        self.watch_for_issues = self.config.get('watch_for_issues', False)
 
     def setup_bot(self):
         self.github = GitHubAPI(self.auth_token, self.base_url)
@@ -195,6 +196,9 @@ class GitHubWorker(BotWorker):
 
     @inlineCallbacks
     def handle_message(self, message):
+        if not self.watch_for_issues:
+            return
+
         issues = []
         for word in message['content'].split():
             if '#' not in word:
@@ -206,6 +210,7 @@ class GitHubWorker(BotWorker):
             user, repo = self.parse_repospec(repospec)
             d = self.github.get_issue(user, repo, issue_num)
             issues.append(d)
+
         if issues:
             issues = yield(DeferredList(issues))
             returnValue([self.format_issue_short(i) for _, i in issues
