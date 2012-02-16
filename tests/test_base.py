@@ -68,21 +68,9 @@ class BotWorkerTestCase(ApplicationTestCase):
     def get_msgs_content(self):
         return [m['content'] for m in self.get_dispatched_messages()]
 
-    def mkmsg_in(self, content):
+    def mkmsg_in(self, content, group="#channel", to_addr=None):
         return super(BotWorkerTestCase, self).mkmsg_in(
-            content=content, from_addr="nick")
-
-    def mkmsg_in_irc(self, content, addressed_to=False, irc_command='PRIVMSG'):
-        return super(BotWorkerTestCase, self).mkmsg_in(
-            content=content, from_addr="nick", helper_metadata={
-                'irc': {
-                    'transport_nickname': 'bot',
-                    'addressed_to_transport': addressed_to,
-                    'irc_server': 'server',
-                    'irc_channel': '#channel',
-                    'irc_command': irc_command,
-                    }
-                })
+            content=content, from_addr="nick", group=group, to_addr=to_addr)
 
     @inlineCallbacks
     def test_both(self):
@@ -120,15 +108,10 @@ class BotWorkerTestCase(ApplicationTestCase):
         self.assertEqual([], self.get_msgs_content())
 
     @inlineCallbacks
-    def test_named_commands(self):
-        # Addressed to the bot by name. (Channel or private message.)
-        yield self.dispatch(self.mkmsg_in_irc('bot: toy1', True))
+    def test_directed_commands(self):
+        # Group-directed.
+        yield self.dispatch(self.mkmsg_in('toy1', to_addr='bot'))
         self.assertEqual(['nick: foo'], self.get_msgs_content())
-        # No name prefix, but addressed directly to the bot in private.
-        yield self.dispatch(self.mkmsg_in_irc('toy1', True))
+        # One-to-one.
+        yield self.dispatch(self.mkmsg_in('toy1', to_addr='bot', group=None))
         self.assertEqual(['nick: foo', 'nick: foo'], self.get_msgs_content())
-
-    @inlineCallbacks
-    def test_misnamed_commands(self):
-        yield self.dispatch(self.mkmsg_in_irc('bat: toy1', False))
-        self.assertEqual([], self.get_msgs_content())

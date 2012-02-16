@@ -50,19 +50,14 @@ class BotWorker(ApplicationWorker):
         pass
 
     def parse_user_message(self, message):
-        irc_metadata = message['helper_metadata'].get('irc', {})
         content = message['content']
-
         is_command = False
 
         if content.startswith(self.command_prefix):
             is_command = True
             content = content[len(self.command_prefix):]
-        elif irc_metadata.get('addressed_to_transport', True):
+        elif message['to_addr'] is not None:
             is_command = True
-            bot_name = irc_metadata.get('transport_nickname', 'bot')
-            if content.startswith(bot_name):
-                content = content.split(None, 1)[-1]
 
         return (is_command, content)
 
