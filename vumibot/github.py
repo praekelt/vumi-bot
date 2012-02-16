@@ -4,9 +4,10 @@
 Github informational utilities
 """
 
+import re
 import json
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks, returnValue, DeferredList
 
 from vumi.utils import http_request_full
 
@@ -189,3 +190,23 @@ class GitHubWorker(BotWorker):
             returnValue("Sorry, I can't seem to find that in %s/%s." % (
                     user, repo))
         returnValue(self.format_issue(raw_issue))
+
+    ISSUE_WATCHER_RE = re.compile(r'([\w/-]*)#(\d+)')
+
+    @inlineCallbacks
+    def handle_message(self, message):
+        issues = []
+        for word in message['content'].split():
+            if '#' not in word:
+                continue
+            match = self.ISSUE_WATCHER_RE.search(word)
+            if not match:
+                continue
+            repospec, issue_num = match.groups()
+            user, repo = self.parse_repospec(repospec)
+            d = self.github.get_issue(user, repo, issue_num)
+            issues.append(d)
+        if issues:
+            issues = yield(DeferredList(issues))
+            returnValue([self.format_issue_short(i) for _, i in issues
+                         if i.get('message') != 'Not Found'])
