@@ -49,6 +49,23 @@ class BotWorker(ApplicationWorker):
     def teardown_bot(self):
         pass
 
+    def parse_user_message(self, message):
+        irc_metadata = message['helper_metadata'].get('irc', {})
+        content = message['content']
+
+        is_command = False
+
+        if content.startswith(self.command_prefix):
+            is_command = True
+            content = content[len(self.command_prefix):]
+        elif irc_metadata.get('addressed_to_transport', True):
+            is_command = True
+            bot_name = irc_metadata.get('transport_nickname', 'bot')
+            if content.startswith(bot_name):
+                content = content.split(None, 1)[-1]
+
+        return (is_command, content)
+
     def find_command(self, command_name):
         handler = getattr(self, 'cmd_%s' % (command_name,), None)
         if hasattr(handler, 'pattern') and callable(handler):
@@ -76,9 +93,8 @@ class BotWorker(ApplicationWorker):
             log.err()
 
         try:
-            content = message['content']
-            if content.startswith(self.command_prefix):
-                content = message['content'][len(self.command_prefix):]
+            is_command, content = self.parse_user_message(message)
+            if is_command:
                 rpl = yield self.handle_command(message, content)
                 replies.extend(self.listify_replies(rpl))
         except Exception, e:

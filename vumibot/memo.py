@@ -7,7 +7,7 @@ import json
 import redis
 from twisted.python import log
 
-from twisted.internet.defer import inlineCallbacks, returnValue
+from twisted.internet.defer import inlineCallbacks
 
 from vumibot.base import BotWorker, botcommand
 
@@ -56,11 +56,6 @@ class MemoWorker(BotWorker):
         for memo_sender, memo_text in memos:
             yield self.reply_to(message, "%s, %s asked me tell you: %s" % (
                     nickname, memo_sender, memo_text))
-
-        if irc_metadata.get('addressed_to_transport', True):
-            rpl = yield self.handle_command(
-                message, message['content'].split(None, 1)[-1])
-            returnValue(rpl)
 
     @botcommand(r'(?P<target>\S+)\s+(?P<memo_text>.+)$')
     def cmd_tell(self, message, params, target, memo_text):

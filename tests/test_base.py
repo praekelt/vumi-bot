@@ -72,9 +72,21 @@ class BotWorkerTestCase(ApplicationTestCase):
         return super(BotWorkerTestCase, self).mkmsg_in(
             content=content, from_addr="nick")
 
+    def mkmsg_in_irc(self, content, addressed_to=False, irc_command='PRIVMSG'):
+        return super(BotWorkerTestCase, self).mkmsg_in(
+            content=content, from_addr="nick", helper_metadata={
+                'irc': {
+                    'transport_nickname': 'bot',
+                    'addressed_to_transport': addressed_to,
+                    'irc_server': 'server',
+                    'irc_channel': '#channel',
+                    'irc_command': irc_command,
+                    }
+                })
+
     @inlineCallbacks
     def test_both(self):
-        msg = self.mkmsg_in(content='!toy')
+        msg = self.mkmsg_in('!toy')
         yield self.dispatch(msg)
         self.assertEqual(['nick: foo', 'nick: bar'], self.get_msgs_content())
 
@@ -87,22 +99,36 @@ class BotWorkerTestCase(ApplicationTestCase):
 
     @inlineCallbacks
     def test_each(self):
-        msg = self.mkmsg_in(content='!toy1')
+        msg = self.mkmsg_in('!toy1')
         yield self.dispatch(msg)
         self.assertEqual(['nick: foo'], self.get_msgs_content())
 
-        msg = self.mkmsg_in(content='!toy2')
+        msg = self.mkmsg_in('!toy2')
         yield self.dispatch(msg)
         self.assertEqual(['nick: foo', 'nick: bar'], self.get_msgs_content())
 
     @inlineCallbacks
     def test_non_commands(self):
-        yield self.dispatch(self.mkmsg_in(content='!callable'))
-        yield self.dispatch(self.mkmsg_in(content='!re'))
-        yield self.dispatch(self.mkmsg_in(content='!'))
+        yield self.dispatch(self.mkmsg_in('!callable'))
+        yield self.dispatch(self.mkmsg_in('!re'))
+        yield self.dispatch(self.mkmsg_in('!'))
         self.assertEqual([], self.get_msgs_content())
 
     @inlineCallbacks
     def test_prefix_only(self):
-        yield self.dispatch(self.mkmsg_in(content='!'))
+        yield self.dispatch(self.mkmsg_in('!'))
+        self.assertEqual([], self.get_msgs_content())
+
+    @inlineCallbacks
+    def test_named_commands(self):
+        # Addressed to the bot by name. (Channel or private message.)
+        yield self.dispatch(self.mkmsg_in_irc('bot: toy1', True))
+        self.assertEqual(['nick: foo'], self.get_msgs_content())
+        # No name prefix, but addressed directly to the bot in private.
+        yield self.dispatch(self.mkmsg_in_irc('toy1', True))
+        self.assertEqual(['nick: foo', 'nick: foo'], self.get_msgs_content())
+
+    @inlineCallbacks
+    def test_misnamed_commands(self):
+        yield self.dispatch(self.mkmsg_in_irc('bat: toy1', False))
         self.assertEqual([], self.get_msgs_content())
