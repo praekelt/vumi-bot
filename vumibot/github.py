@@ -203,9 +203,6 @@ class GitHubWorker(BotWorker):
         "Expected params: [repospec] <pull request number>"
         user, repo = self.parse_repospec(repospec)
         resp = yield self.github.get_pull(user, repo, pull_num)
-        if resp.get('message') == 'Not Found':
-            returnValue("Sorry, I can't seem to find that in %s/%s." % (
-                    user, repo))
         returnValue(self.format_pull(resp))
 
     @botcommand(r'^(?:(?P<repospec>\S+)\s+)?(?P<issue_num>\d+)$')
@@ -214,9 +211,6 @@ class GitHubWorker(BotWorker):
         "Expected params: [repospec] <issue number>"
         user, repo = self.parse_repospec(repospec)
         resp = yield self.github.get_issue(user, repo, issue_num)
-        if resp.get('message') == 'Not Found':
-            returnValue("Sorry, I can't seem to find that in %s/%s." % (
-                    user, repo))
         returnValue(self.format_issue(resp))
 
     ISSUE_WATCHER_RE = re.compile(r'([\w/-]*)#(\d+)')
@@ -244,6 +238,6 @@ class GitHubWorker(BotWorker):
             issues.append(d)
 
         if issues:
-            issues = yield(DeferredList(issues))
-            returnValue([self.format_issue_short(i) for _, i in issues
-                         if i.get('message') != 'Not Found'])
+            issues = yield(DeferredList(issues, consumeErrors=True))
+            returnValue([self.format_issue_short(resp)
+                         for succeeded, resp in issues if succeeded])
