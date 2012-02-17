@@ -200,7 +200,6 @@ class GitHubWorker(BotWorker):
             return
 
         command = message['helper_metadata'].get('irc', {}).get('irc_command')
-        print command
         if command == 'NOTICE':
             # We don't want to watch NOTICEs, as they're probably other bots.
             return
