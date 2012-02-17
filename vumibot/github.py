@@ -199,6 +199,12 @@ class GitHubWorker(BotWorker):
         if not self.watch_for_issues:
             return
 
+        command = message['helper_metadata'].get('irc', {}).get('irc_command')
+        print command
+        if command == 'NOTICE':
+            # We don't want to watch NOTICEs, as they're probably other bots.
+            return
+
         issues = []
         for word in message['content'].split():
             if '#' not in word:
