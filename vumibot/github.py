@@ -30,6 +30,24 @@ def extract_params(text):
     return extractor.params
 
 
+class APIError(Exception):
+    MSG = "Whoops, something went wrong."
+    MSG_ERR = "Whoops, something went wrong:"
+
+    def __init__(self, err=None, msg=None):
+        self.err = err
+        self.msg = msg
+
+    def __str__(self):
+        if self.err is None:
+            return self.msg or self.MSG
+        return "%s: %s" % (self.msg or self.MSG_ERR, self.err)
+
+
+class NotFoundError(APIError):
+    MSG = "Sorry, I can't find that."
+
+
 # This stuff is some weird magic to make it easier to define API calls later.
 class APICommand(object):
     def __init__(self, url, method='GET', auth=False):
@@ -84,6 +102,8 @@ class GitHubAPI(object):
     def _parse_response(self, response):
         if getattr(self, 'DEBUG', None):
             print "=====\n%s\n=====" % response.delivered_body
+        if response.code == 404:
+            raise NotFoundError()
         return json.loads(response.delivered_body)
 
     list_issues = mkapi("repos/%(user)s/%(repo)s/issues")
@@ -105,6 +125,10 @@ class GitHubWorker(BotWorker):
 
     def setup_bot(self):
         self.github = GitHubAPI(self.auth_token, self.base_url)
+
+    def handle_command_error(self, failure):
+        failure.trap(APIError)
+        return str(failure.value)
 
     def parse_repospec(self, repospec):
         user, repo = ([''] + (repospec or '').split('/'))[-2:]
@@ -162,35 +186,38 @@ class GitHubWorker(BotWorker):
     @botcommand(r'(?P<repospec>\S*)')
     @inlineCallbacks
     def cmd_pulls(self, message, params, repospec):
+        "Expected params: [repospec]"
         user, repo = self.parse_repospec(repospec)
-        raw_pulls = yield self.github.list_pulls(user, repo)
+        resp = yield self.github.list_pulls(user, repo)
 
         replies = [self.format_found(
-                len(raw_pulls), "pull request", "%s/%s" % (user, repo))]
-        if raw_pulls:
+                len(resp), "pull request", "%s/%s" % (user, repo))]
+        if resp:
             replies.extend([self.format_pull_short(pull)
-                            for pull in raw_pulls])
+                            for pull in resp])
         returnValue(replies)
 
     @botcommand(r'^(?:(?P<repospec>\S+)\s+)?(?P<pull_num>\d+)$')
     @inlineCallbacks
     def cmd_pull(self, message, params, repospec, pull_num):
+        "Expected params: [repospec] <pull request number>"
         user, repo = self.parse_repospec(repospec)
-        raw_pull = yield self.github.get_pull(user, repo, pull_num)
-        if raw_pull.get('message') == 'Not Found':
+        resp = yield self.github.get_pull(user, repo, pull_num)
+        if resp.get('message') == 'Not Found':
             returnValue("Sorry, I can't seem to find that in %s/%s." % (
                     user, repo))
-        returnValue(self.format_pull(raw_pull))
+        returnValue(self.format_pull(resp))
 
     @botcommand(r'^(?:(?P<repospec>\S+)\s+)?(?P<issue_num>\d+)$')
     @inlineCallbacks
     def cmd_issue(self, message, params, repospec, issue_num):
+        "Expected params: [repospec] <issue number>"
         user, repo = self.parse_repospec(repospec)
-        raw_issue = yield self.github.get_issue(user, repo, issue_num)
-        if raw_issue.get('message') == 'Not Found':
+        resp = yield self.github.get_issue(user, repo, issue_num)
+        if resp.get('message') == 'Not Found':
             returnValue("Sorry, I can't seem to find that in %s/%s." % (
                     user, repo))
-        returnValue(self.format_issue(raw_issue))
+        returnValue(self.format_issue(resp))
 
     ISSUE_WATCHER_RE = re.compile(r'([\w/-]*)#(\d+)')
 

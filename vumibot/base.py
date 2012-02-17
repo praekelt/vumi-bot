@@ -2,7 +2,7 @@
 
 import re
 
-from twisted.internet.defer import inlineCallbacks
+from twisted.internet.defer import inlineCallbacks, maybeDeferred
 from twisted.python import log
 
 from vumi.message import TransportUserMessage, TransportEvent
@@ -116,9 +116,13 @@ class BotWorker(ApplicationWorker):
 
         match = handler.pattern.match(params.strip())
         if not match:
-            return "that does not compute. %s" % (handler.__doc__,)
-        return handler(
-            message, match.groups(), **match.groupdict())
+            return "That does not compute. %s" % (handler.__doc__,)
+        d = maybeDeferred(
+            handler, message, match.groups(), **match.groupdict())
+        return d.addErrback(self.handle_command_error)
+
+    def handle_command_error(self, failure):
+        return failure
 
     @inlineCallbacks
     def _setup_transport_consumer(self):
