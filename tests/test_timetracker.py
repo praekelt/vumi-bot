@@ -112,8 +112,8 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         yield self.dispatch(msg)
         [response] = self.get_dispatched_messages()
         self.assertEqual(response['content'],
-            '%s: that does not compute. %s' % (
-                msg.user(), self.app.cmd_log.__doc__))
+            'that does not compute. %s' % (
+                self.app.cmd_log.__doc__))
         worksheet = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(list(worksheet), [])
 
@@ -124,8 +124,7 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         [response] = self.get_dispatched_messages()
         self.assertEqual(
             response['content'],
-            '%s: eep! ValueError: day is out of range for month.' % (
-                msg.user(),))
+            'eep! ValueError: day is out of range for month.')
         worksheet = self.app.spreadsheet.get_worksheet(msg.user())
         self.assertEqual(list(worksheet), [])
         self.flushLoggedErrors()

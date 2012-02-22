@@ -24,11 +24,11 @@ class MexicanWorkerTestCase(ApplicationTestCase):
         msg = self.mkmsg_in(content='!mexican wave', from_addr='jose')
         yield self.dispatch(msg)
         self.assertEqual([
-                r"jose: \o/\o/.o..o..o..o.",
-                r"jose: .o.\o/\o/.o..o..o.",
-                r"jose: .o..o.\o/\o/.o..o.",
-                r"jose: .o..o..o.\o/\o/.o.",
-                r"jose: .o..o..o..o.\o/\o/",
+                r"\o/\o/.o..o..o..o.",
+                r".o.\o/\o/.o..o..o.",
+                r".o..o.\o/\o/.o..o.",
+                r".o..o..o.\o/\o/.o.",
+                r".o..o..o..o.\o/\o/",
                 ], [m['content'] for m in self.get_dispatched_messages()])
 
     @inlineCallbacks

@@ -76,7 +76,7 @@ class BotWorkerTestCase(ApplicationTestCase):
     def test_both(self):
         msg = self.mkmsg_in('!toy')
         yield self.dispatch(msg)
-        self.assertEqual(['nick: foo', 'nick: bar'], self.get_msgs_content())
+        self.assertEqual(['foo', 'bar'], self.get_msgs_content())
 
         # This should probably be in its own test.
         # We use a different queue name so that we can have multiple workers
@@ -89,11 +89,11 @@ class BotWorkerTestCase(ApplicationTestCase):
     def test_each(self):
         msg = self.mkmsg_in('!toy1')
         yield self.dispatch(msg)
-        self.assertEqual(['nick: foo'], self.get_msgs_content())
+        self.assertEqual(['foo'], self.get_msgs_content())
 
         msg = self.mkmsg_in('!toy2')
         yield self.dispatch(msg)
-        self.assertEqual(['nick: foo', 'nick: bar'], self.get_msgs_content())
+        self.assertEqual(['foo', 'bar'], self.get_msgs_content())
 
     @inlineCallbacks
     def test_non_commands(self):
@@ -111,7 +111,7 @@ class BotWorkerTestCase(ApplicationTestCase):
     def test_directed_commands(self):
         # Group-directed.
         yield self.dispatch(self.mkmsg_in('toy1', to_addr='bot'))
-        self.assertEqual(['nick: foo'], self.get_msgs_content())
+        self.assertEqual(['foo'], self.get_msgs_content())
         # One-to-one.
         yield self.dispatch(self.mkmsg_in('toy1', to_addr='bot', group=None))
-        self.assertEqual(['nick: foo', 'nick: foo'], self.get_msgs_content())
+        self.assertEqual(['foo', 'foo'], self.get_msgs_content())
