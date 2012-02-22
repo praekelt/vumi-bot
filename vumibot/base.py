@@ -50,19 +50,14 @@ class BotWorker(ApplicationWorker):
         pass
 
     def parse_user_message(self, message):
-        irc_metadata = message['helper_metadata'].get('irc', {})
         content = message['content']
-
         is_command = False
 
         if content.startswith(self.command_prefix):
             is_command = True
             content = content[len(self.command_prefix):]
-        elif irc_metadata.get('addressed_to_transport', True):
+        elif message['to_addr'] is not None:
             is_command = True
-            bot_name = irc_metadata.get('transport_nickname', 'bot')
-            if content.startswith(bot_name):
-                content = content.split(None, 1)[-1]
 
         return (is_command, content)
 
@@ -102,8 +97,7 @@ class BotWorker(ApplicationWorker):
             replies.append('eep! %s: %s.' % (type(e).__name__, e))
 
         for reply in replies:
-            self.reply_to(message, '%s: %s' % (
-                    message['from_addr'], reply))
+            self.reply_to(message, reply)
 
     def handle_message(self, message):
         pass

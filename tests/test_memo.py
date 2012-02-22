@@ -33,7 +33,7 @@ class TestMemoWorker(ApplicationTestCase):
             helper_metadata['irc'] = {'irc_channel': channel}
 
         msg = self.mkmsg_in(content=content, from_addr=from_addr,
-                            helper_metadata=helper_metadata,
+                            group=channel, helper_metadata=helper_metadata,
                             transport_metadata=transport_metadata)
         yield self.dispatch(msg)
 
@@ -59,35 +59,25 @@ class TestMemoWorker(ApplicationTestCase):
 
     @inlineCallbacks
     def test_leave_memo(self):
-        yield self.send('bot: tell memoed hey there', channel='#test')
-        self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
-                          [['testnick', 'hey there']])
-        replies = yield self.recv()
-        self.assertEqual(replies, [
-            ('reply', 'testnick: Sure thing, boss.'),
-            ])
-
-    @inlineCallbacks
-    def test_leave_memo_cmd(self):
         yield self.send('!tell memoed hey there', channel='#test')
         self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
                           [['testnick', 'hey there']])
         replies = yield self.recv()
         self.assertEqual(replies, [
-            ('reply', 'testnick: Sure thing, boss.'),
+            ('reply', 'Sure thing, boss.'),
             ])
 
     @inlineCallbacks
     def test_leave_memo_nick_canonicalization(self):
-        yield self.send('bot: tell MeMoEd hey there', channel='#test')
+        yield self.send('!tell MeMoEd hey there', channel='#test')
         self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
                           [['testnick', 'hey there']])
 
     @inlineCallbacks
     def test_send_memos(self):
-        yield self.send('bot: tell testmemo this is memo 1', channel='#test')
-        yield self.send('bot: tell testmemo this is memo 2', channel='#test')
-        yield self.send('bot: tell testmemo this is a different channel',
+        yield self.send('!tell testmemo this is memo 1', channel='#test')
+        yield self.send('!tell testmemo this is memo 2', channel='#test')
+        yield self.send('!tell testmemo this is a different channel',
                         channel='#another')
 
         # replies to setting memos

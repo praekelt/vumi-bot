@@ -47,22 +47,21 @@ class MemoWorker(BotWorker):
     @inlineCallbacks
     def handle_message(self, message):
         nickname = message.user()
-        irc_metadata = message['helper_metadata'].get('irc', {})
-        channel = irc_metadata.get('irc_channel', 'unknown')
+        channel = message['group']
 
         memos = self.retrieve_memos(channel, nickname, delete=True)
         if memos:
             log.msg("Time to deliver some memos:", memos)
         for memo_sender, memo_text in memos:
-            yield self.reply_to(message, "%s, %s asked me tell you: %s" % (
+            yield self.reply_to_group(
+                message, "%s, %s asked me tell you: %s" % (
                     nickname, memo_sender, memo_text))
 
     @botcommand(r'(?P<target>\S+)\s+(?P<memo_text>.+)$')
     def cmd_tell(self, message, params, target, memo_text):
         "Usage: !tell <nick> <message>"
 
-        irc_metadata = message['helper_metadata'].get('irc', {})
-        channel = irc_metadata.get('irc_channel', 'unknown')
+        channel = message['group']
 
         recipient = target.lower()
         sender = message['from_addr']

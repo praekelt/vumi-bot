@@ -147,10 +147,10 @@ class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
         msg = self.mkmsg_in(content='!pulls', from_addr='dev')
         yield self.dispatch(msg)
         self.assert_response_content(
-            'dev: Found 2 pull requests for praekelt/vumi.',
-            ('dev: 184: adding PingClientProtocol | unmerged | '
+            'Found 2 pull requests for praekelt/vumi.',
+            ('184: adding PingClientProtocol | unmerged | '
              'https://github.com/praekelt/vumi/pull/184'),
-            ('dev: 173: Feature/issue 107 smpp split transport and '
+            ('173: Feature/issue 107 smpp split transport and '
              'client properly | unmerged | '
              'https://github.com/praekelt/vumi/pull/173'))
 
@@ -159,10 +159,10 @@ class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
         msg = self.mkmsg_in(content='!pull 173', from_addr='dev')
         yield self.dispatch(msg)
         self.assert_response_content(
-            ('dev: 173: Feature/issue 107 smpp split transport and '
+            ('173: Feature/issue 107 smpp split transport and '
              'client properly | unmerged | '
              'https://github.com/praekelt/vumi/pull/173'),
-            ('dev: created at: 2012-02-06T23:49:49Z | changed files: 19 '
+            ('created at: 2012-02-06T23:49:49Z | changed files: 19 '
              '| commits: 40 | comments: 7'))
 
     @inlineCallbacks
@@ -170,7 +170,7 @@ class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
         msg = self.mkmsg_in(content='!issue 107', from_addr='dev')
         yield self.dispatch(msg)
         self.assert_response_content(
-            ('dev: 107: smpp split transport and client properly | '
+            ('107: smpp split transport and client properly | '
              '\x02open\x02 | https://github.com/praekelt/vumi/issues/107'),
-            ('dev: created at: 2012-01-06T11:41:17Z | reporter: dmaclay | '
+            ('created at: 2012-01-06T11:41:17Z | reporter: dmaclay | '
              'assigned: \x02nobody\x02 | comments: 0 | labels: Redis, SMPP'))

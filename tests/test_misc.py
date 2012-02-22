@@ -22,6 +22,6 @@ class MiscWorkerTestCase(ApplicationTestCase):
     def test_ping(self):
         msg = self.mkmsg_in(content='!ping', from_addr='marco')
         yield self.dispatch(msg)
-        self.assertEqual([
-                r"marco: pong.",
-                ], [m['content'] for m in self.get_dispatched_messages()])
+        self.assertEqual(
+            [r"pong."],
+            [m['content'] for m in self.get_dispatched_messages()])
