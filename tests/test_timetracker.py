@@ -159,7 +159,6 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         yield self.dispatch(msg2)
         posted_data = json.loads(self.gist_resource.captured_post_data)
         files = posted_data['files']
-        print files
         self.assertEqual(files.keys(), [
             'jid-domain-net-resource.csv'
         ])
