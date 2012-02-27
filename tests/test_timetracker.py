@@ -153,10 +153,10 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
     def test_file_name_generation(self):
         msg1 = self.mkmsg_in(content='!log 4h vumibot',
                 from_addr='jid@domain.net/resource')
-        msg2 = self.mkmsg_in(content='!log 4h vumibot',
-        msg3 = self.mkmsg_in(content='!publish',
+        msg2 = self.mkmsg_in(content='!publish',
                 from_addr='jid@domain.net/resource')
-        yield self.dispatch(msg1, msg2, msg3)
+        yield self.dispatch(msg1)
+        yield self.dispatch(msg2)
         posted_data = json.loads(self.gist_resource.captured_post_data)
         files = posted_data['files']
         print files
