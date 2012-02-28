@@ -47,7 +47,7 @@ class RedisSpreadSheet(object):
         self.gc_key = self.r_key('worksheets')
 
     def r_key(self, *args):
-        return ':'.join([self.r_prefix] + map(str, args))
+        return ':'.join([self.r_prefix] + map(unicode, args))
 
     def get_row_key(self, worksheet_name):
         return self.r_key(worksheet_name, 'rows')
@@ -98,7 +98,8 @@ class RedisSpreadSheet(object):
     def worksheet_to_filename(self, worksheet_name):
         # Shamelessly copied & modified from Django's
         # slugify default filter
-        worksheet_name = unicodedata.normalize('NFKD',
+        if isinstance(worksheet_name, unicode):
+            worksheet_name = unicodedata.normalize('NFKD',
                                 worksheet_name).encode('ascii', 'ignore')
         worksheet_name = unicode(re.sub('[^\w\s-]', '-',
                                 worksheet_name).strip().lower())

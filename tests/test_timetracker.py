@@ -1,3 +1,4 @@
+# -*- coding: utf8 -*-
 import json
 
 from datetime import datetime, timedelta
@@ -152,9 +153,9 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
     @inlineCallbacks
     def test_file_name_generation(self):
         msg1 = self.mkmsg_in(content='!log 4h vumibot',
-                from_addr='jid@domain.net/resource')
+                from_addr='jïd@domain.net/resource')
         msg2 = self.mkmsg_in(content='!publish',
-                from_addr='jid@domain.net/resource')
+                from_addr='jïd@domain.net/resource')
         yield self.dispatch(msg1)
         yield self.dispatch(msg2)
         posted_data = json.loads(self.gist_resource.captured_post_data)
