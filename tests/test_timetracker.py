@@ -142,6 +142,28 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         })
 
     @inlineCallbacks
+    def test_publish(self):
+        msg = self.mkmsg_in(content='!publish')
+        yield self.dispatch(msg)
+        posted_data = json.loads(self.gist_resource.captured_post_data)
+        self.assertTrue("description" in posted_data)
+        self.assertFalse(posted_data["public"])
+
+    @inlineCallbacks
+    def test_file_name_generation(self):
+        msg1 = self.mkmsg_in(content='!log 4h vumibot',
+                from_addr='jid@domain.net/resource')
+        msg2 = self.mkmsg_in(content='!publish',
+                from_addr='jid@domain.net/resource')
+        yield self.dispatch(msg1)
+        yield self.dispatch(msg2)
+        posted_data = json.loads(self.gist_resource.captured_post_data)
+        files = posted_data['files']
+        self.assertEqual(files.keys(), [
+            'jid-domain-net-resource.csv'
+        ])
+
+    @inlineCallbacks
     def test_dumping_of_data(self):
         users = ['tester 123', 'testing 345']
         for user in users:

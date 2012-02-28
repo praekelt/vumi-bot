@@ -10,6 +10,7 @@ import uuid
 import csv
 import json
 import base64
+import unicodedata
 from StringIO import StringIO
 from datetime import datetime, timedelta
 
@@ -95,7 +96,13 @@ class RedisSpreadSheet(object):
             yield row_key, self.get_column(worksheet_name, row_key)
 
     def worksheet_to_filename(self, worksheet_name):
-        return worksheet_name.lower().replace(' ', '-')
+        # Shamelessly copied & modified from Django's
+        # slugify default filter
+        worksheet_name = unicodedata.normalize('NFKD',
+                                worksheet_name).encode('ascii', 'ignore')
+        worksheet_name = unicode(re.sub('[^\w\s-]', '-',
+                                worksheet_name).strip().lower())
+        return re.sub('[-\s]+', '-', worksheet_name)
 
     def get_gist_payload(self):
         gist_payload = {
