@@ -165,7 +165,7 @@ class TimeTrackWorker(BotWorker):
         self.r_config = self.config.get('redis_config', {})
 
     def setup_bot(self):
-        self.r_server = redis.Redis(**self.r_config)
+        self.r_server = self.get_redis()
 
         self.spreadsheet_name = self.config['spreadsheet_name']
         self.username = self.config['username']
@@ -183,6 +183,9 @@ class TimeTrackWorker(BotWorker):
     def teardown_bot(self):
         if self.spreadsheet:
             self.spreadsheet.scheduler.stop()
+
+    def get_redis(self):
+        return redis.Redis(**self.r_config)
 
     def convert_date(self, named_date):
         if named_date == "yesterday":

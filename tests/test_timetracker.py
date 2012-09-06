@@ -41,6 +41,10 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
         addr = self.gist_server.getHost()
         self.server_url = "http://%s:%s/" % (addr.host, addr.port)
 
+        self.fake_redis = FakeRedis()
+        self.patch(TimeTrackWorker, 'get_redis',
+            lambda x: self.fake_redis)
+
         self.app = yield self.get_application({
             'worker_name': 'test_timetracker',
             'spreadsheet_name': 'some-spreadsheet',
@@ -48,8 +52,6 @@ class TimeTrackWorkerTestCase(ApplicationTestCase):
             'password': 'some-password',
             'validity': '10',
             })
-        self.fake_redis = FakeRedis()
-        self.app.r_server = self.fake_redis
 
         self.app.spreadsheet.r_server = self.fake_redis
         self.app.spreadsheet.gist_url = self.server_url
