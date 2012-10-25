@@ -75,8 +75,8 @@ class TestCoffeeWorker(ApplicationTestCase):
 
     @inlineCallbacks
     def test_send_violations(self):
-        yield self.send('!coffee testmemo this is violation 1', channel='#test')
-        yield self.send('!coffee testmemo this is violation 2', channel='#test')
+        yield self.send('!coffee testmemo this is violation1', channel='#test')
+        yield self.send('!coffee testmemo this is violation2', channel='#test')
         yield self.send('!coffee testmemo this is a different channel',
                         channel='#another')
 
@@ -88,9 +88,9 @@ class TestCoffeeWorker(ApplicationTestCase):
         replies = yield self.recv(2)
 
         self.assertEqual(replies, [
-            ('reply', 'testmemo, testnick says you butchered the language with:'
-             ' this is violation 1'),
-            ('reply', 'testmemo, testnick says you butchered the language with:'
-             ' this is violation 2'),
+            ('reply', 'testmemo, testnick says you butchered this:'
+             ' this is violation1'),
+            ('reply', 'testmemo, testnick says you butchered this:'
+             ' this is violation2'),
             ])
         self.clear_messages()

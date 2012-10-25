@@ -50,7 +50,7 @@ class CoffeeWorker(BotWorker):
         violations = self.retrieve_violations(channel, nickname, delete=True)
         if violations:
             log.msg("Time to deliver some violations:", violations)
-        return ["%s, %s says you butchered the language with: %s" % (
+        return ["%s, %s says you butchered this: %s" % (
                     nickname, violation_sender, violation_text)
                     for violation_sender, violation_text in violations]
 
