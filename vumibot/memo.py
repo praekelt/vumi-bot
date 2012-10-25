@@ -67,3 +67,5 @@ class MemoWorker(BotWorker):
         sender = message['from_addr']
         self.store_memo(channel, recipient, sender, memo_text)
         return "Sure thing, boss."
+
+    cmd_ask = cmd_tell  # alias for polite questions

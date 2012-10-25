@@ -74,6 +74,12 @@ class TestMemoWorker(ApplicationTestCase):
                           [['testnick', 'hey there']])
 
     @inlineCallbacks
+    def test_ask_alias(self):
+        yield self.send('!ask wisdomfont how do i? ', channel='#test')
+        self.assertEquals(self.worker.retrieve_memos('#test', 'wisdomfont'),
+                          [['testnick', 'how do i?']])
+
+    @inlineCallbacks
     def test_send_memos(self):
         yield self.send('!tell testmemo this is memo 1', channel='#test')
         yield self.send('!tell testmemo this is memo 2', channel='#test')
