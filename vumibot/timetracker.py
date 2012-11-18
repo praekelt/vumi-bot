@@ -56,7 +56,8 @@ class RedisSpreadSheet(object):
         return self.r_key(worksheet_name, row_key, 'columns')
 
     def get_worksheets(self):
-        return self.r_server.smembers(self.worksheets_key)
+        return [name.decode('utf-8') for name in
+                self.r_server.smembers(self.worksheets_key)]
 
     def get_rows(self, worksheet_name):
         rows_key = self.get_row_key(worksheet_name)
