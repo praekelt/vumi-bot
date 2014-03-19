@@ -2,29 +2,20 @@
 
 from twisted.internet.defer import inlineCallbacks, returnValue
 
-from vumi.application.tests.test_base import ApplicationTestCase
-from vumi.tests.utils import FakeRedis
-
-from vumibot.memo import MemoWorker
 from vumi.message import TransportUserMessage
+from vumi.tests.helpers import VumiTestCase
+
+from tests.helpers import BotMessageProcessorHelper
+from vumibot.memo import MemoMessageProcessor
 
 
-class TestMemoWorker(ApplicationTestCase):
-
-    application_class = MemoWorker
-
+class TestMemoWorker(VumiTestCase):
     @inlineCallbacks
     def setUp(self):
-        super(TestMemoWorker, self).setUp()
-        self.worker = yield self.get_application({
-            'worker_name': 'testmemo',
-            })
-        self.worker.r_server = FakeRedis()
+        self.proc_helper = self.add_helper(
+            BotMessageProcessorHelper(MemoMessageProcessor))
+        self.proc = yield self.proc_helper.get_message_processor({})
 
-    def tearDown(self):
-        self.worker.r_server.teardown()
-
-    @inlineCallbacks
     def send(self, content, from_addr='testnick', channel=None):
         transport_metadata = {}
         helper_metadata = {}
@@ -32,17 +23,14 @@ class TestMemoWorker(ApplicationTestCase):
             transport_metadata['irc_channel'] = channel
             helper_metadata['irc'] = {'irc_channel': channel}
 
-        msg = self.mkmsg_in(content=content, from_addr=from_addr,
-                            group=channel, helper_metadata=helper_metadata,
-                            transport_metadata=transport_metadata)
-        yield self.dispatch(msg)
-
-    def clear_messages(self):
-        self._amqp.clear_messages('vumi', '%s.outbound' % self.transport_name)
+        return self.proc_helper.make_dispatch_inbound(
+            content, from_addr=from_addr, group=channel,
+            helper_metadata=helper_metadata,
+            transport_metadata=transport_metadata)
 
     @inlineCallbacks
     def recv(self, n=0):
-        msgs = yield self.wait_for_dispatched_messages(n)
+        msgs = yield self.proc_helper.wait_for_dispatched_outbound(n)
 
         def reply_code(msg):
             if msg['session_event'] == TransportUserMessage.SESSION_CLOSE:
@@ -60,8 +48,8 @@ class TestMemoWorker(ApplicationTestCase):
     @inlineCallbacks
     def test_leave_memo(self):
         yield self.send('!tell memoed hey there', channel='#test')
-        self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
-                          [['testnick', 'hey there']])
+        memos = yield self.proc.retrieve_memos('#test', 'memoed')
+        self.assertEquals(memos, [['testnick', 'hey there']])
         replies = yield self.recv()
         self.assertEqual(replies, [
             ('reply', 'Sure thing, boss.'),
@@ -70,14 +58,14 @@ class TestMemoWorker(ApplicationTestCase):
     @inlineCallbacks
     def test_leave_memo_nick_canonicalization(self):
         yield self.send('!tell MeMoEd hey there', channel='#test')
-        self.assertEquals(self.worker.retrieve_memos('#test', 'memoed'),
-                          [['testnick', 'hey there']])
+        memos = yield self.proc.retrieve_memos('#test', 'memoed')
+        self.assertEquals(memos, [['testnick', 'hey there']])
 
     @inlineCallbacks
     def test_ask_alias(self):
         yield self.send('!ask wisdomfont how do i? ', channel='#test')
-        self.assertEquals(self.worker.retrieve_memos('#test', 'wisdomfont'),
-                          [['testnick', 'how do i?']])
+        memos = yield self.proc.retrieve_memos('#test', 'wisdomfont')
+        self.assertEquals(memos, [['testnick', 'how do i?']])
 
     @inlineCallbacks
     def test_send_memos(self):
@@ -88,7 +76,7 @@ class TestMemoWorker(ApplicationTestCase):
 
         # replies to setting memos
         replies = yield self.recv(3)
-        self.clear_messages()
+        self.proc_helper.clear_all_dispatched()
 
         yield self.send('ping', channel='#test', from_addr='testmemo')
         replies = yield self.recv(2)
@@ -98,7 +86,7 @@ class TestMemoWorker(ApplicationTestCase):
             ('reply', 'testmemo, testnick asked me tell you:'
              ' this is memo 2'),
             ])
-        self.clear_messages()
+        self.proc_helper.clear_all_dispatched()
 
         yield self.send('ping', channel='#another', from_addr='testmemo')
         replies = yield self.recv(1)

@@ -64,6 +64,14 @@ class BotMessageProcessor(object):
         if hasattr(handler, 'pattern') and callable(handler):
             return handler
 
+    def reply_to(self, original_message, content, *args, **kw):
+        return self._app_worker.reply_to(
+            original_message, content, *args, **kw)
+
+    def reply_to_group(self, original_message, content, *args, **kw):
+        return self._app_worker.reply_to_group(
+            original_message, content, *args, **kw)
+
 
 class BotWorkerConfig(ApplicationWorker.CONFIG_CLASS):
     command_prefix = ConfigText(
