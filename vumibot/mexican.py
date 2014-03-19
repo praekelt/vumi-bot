@@ -7,12 +7,12 @@ Mexican commands.
 
 import random
 
-from vumibot.base import BotWorker, botcommand
+from twisted.internet.defer import inlineCallbacks
+
+from vumibot.base import BotMessageProcessor, botcommand
 
 
-class MexicanWorker(BotWorker):
-    FEATURE_NAME = "mexican"
-
+class MexicanMessageProcessor(BotMessageProcessor):
     @botcommand(r'(?P<subcommand>\w*)!?')
     def cmd_mexican(self, message, params, subcommand):
         handler = getattr(self, 'mexican_%s' % subcommand, None)
@@ -29,10 +29,11 @@ class MexicanWorker(BotWorker):
             ".o..o..o..o.\o/\o/",
             ]
 
+    @inlineCallbacks
     def mexican_standoff(self, message):
-        reply = message.reply("points a pistol at %s." % message.user())
-        reply['helper_metadata']['irc'] = {'irc_command': 'ACTION'}
-        self.transport_publisher.publish_message(reply)
+        message['helper_metadata']['irc'] = {'irc_command': 'ACTION'}
+        yield self.reply_to(
+            message, "points a pistol at %s." % message.user())
 
     def mexican_food(self, message):
         food = random.choice([
