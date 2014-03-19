@@ -4,12 +4,10 @@
 Miscellaneous miscellanea.
 """
 
-from vumibot.base import BotWorker, botcommand
+from vumibot.base import BotMessageProcessor, botcommand
 
 
-class MiscWorker(BotWorker):
-    FEATURE_NAME = "misc"
-
+class MiscMessageProcessor(BotMessageProcessor):
     @botcommand
     def cmd_ping(self, message, params):
         return "pong."
