@@ -2,29 +2,21 @@
 
 from twisted.internet.defer import inlineCallbacks, returnValue
 
-from vumi.application.tests.test_base import ApplicationTestCase
-from vumi.tests.utils import FakeRedis
-
-from vumibot.coffee import CoffeeWorker
 from vumi.message import TransportUserMessage
+from vumi.tests.helpers import VumiTestCase
+
+from tests.helpers import BotMessageProcessorHelper
+from vumibot.coffee import CoffeeMessageProcessor
 
 
-class TestCoffeeWorker(ApplicationTestCase):
-
-    application_class = CoffeeWorker
+class TestCoffeeWorker(VumiTestCase):
 
     @inlineCallbacks
     def setUp(self):
-        super(TestCoffeeWorker, self).setUp()
-        self.worker = yield self.get_application({
-            'worker_name': 'testcoffee',
-            })
-        self.worker.r_server = FakeRedis()
+        self.proc_helper = self.add_helper(
+            BotMessageProcessorHelper(CoffeeMessageProcessor))
+        self.proc = yield self.proc_helper.get_message_processor({})
 
-    def tearDown(self):
-        self.worker.r_server.teardown()
-
-    @inlineCallbacks
     def send(self, content, from_addr='testnick', channel=None):
         transport_metadata = {}
         helper_metadata = {}
@@ -32,17 +24,14 @@ class TestCoffeeWorker(ApplicationTestCase):
             transport_metadata['irc_channel'] = channel
             helper_metadata['irc'] = {'irc_channel': channel}
 
-        msg = self.mkmsg_in(content=content, from_addr=from_addr,
-                            group=channel, helper_metadata=helper_metadata,
-                            transport_metadata=transport_metadata)
-        yield self.dispatch(msg)
-
-    def clear_messages(self):
-        self._amqp.clear_messages('vumi', '%s.outbound' % self.transport_name)
+        return self.proc_helper.make_dispatch_inbound(
+            content, from_addr=from_addr, group=channel,
+            helper_metadata=helper_metadata,
+            transport_metadata=transport_metadata)
 
     @inlineCallbacks
     def recv(self, n=0):
-        msgs = yield self.wait_for_dispatched_messages(n)
+        msgs = yield self.proc_helper.wait_for_dispatched_outbound(n)
 
         def reply_code(msg):
             if msg['session_event'] == TransportUserMessage.SESSION_CLOSE:
@@ -60,8 +49,8 @@ class TestCoffeeWorker(ApplicationTestCase):
     @inlineCallbacks
     def test_leave_violation(self):
         yield self.send('!coffee memoed mistake', channel='#test')
-        self.assertEquals(self.worker.retrieve_violations('#test', 'memoed'),
-                          [['testnick', 'mistake']])
+        violations = yield self.proc.retrieve_violations('#test', 'memoed')
+        self.assertEquals(violations, [['testnick', 'mistake']])
         replies = yield self.recv()
         self.assertEqual(replies, [
             ('reply', 'Oh boy!'),
@@ -70,8 +59,8 @@ class TestCoffeeWorker(ApplicationTestCase):
     @inlineCallbacks
     def test_leave_violation_nick_canonicalization(self):
         yield self.send('!coffee MeMoEd boooo', channel='#test')
-        self.assertEquals(self.worker.retrieve_violations('#test', 'memoed'),
-                          [['testnick', 'boooo']])
+        violations = yield self.proc.retrieve_violations('#test', 'memoed')
+        self.assertEquals(violations, [['testnick', 'boooo']])
 
     @inlineCallbacks
     def test_send_violations(self):
@@ -82,7 +71,7 @@ class TestCoffeeWorker(ApplicationTestCase):
 
         # replies to setting memos
         replies = yield self.recv(3)
-        self.clear_messages()
+        self.proc_helper.clear_all_dispatched()
 
         yield self.send('!mycoffee', channel='#test', from_addr='testmemo')
         replies = yield self.recv(2)
@@ -93,4 +82,3 @@ class TestCoffeeWorker(ApplicationTestCase):
             ('reply', 'testmemo, testnick says you butchered this:'
              ' this is violation2'),
             ])
-        self.clear_messages()

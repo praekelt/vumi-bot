@@ -1,41 +1,36 @@
 
 from twisted.internet.defer import inlineCallbacks
 
-from vumi.application.tests.test_base import ApplicationTestCase
+from vumi.tests.helpers import VumiTestCase
 
-from vumibot.mexican import MexicanWorker
+from tests.helpers import BotMessageProcessorHelper
+from vumibot.mexican import MexicanMessageProcessor
 
 
-class MexicanWorkerTestCase(ApplicationTestCase):
-
-    application_class = MexicanWorker
-    timeout = 1
-
+class TestMexicanMessageProcessor(VumiTestCase):
     @inlineCallbacks
     def setUp(self):
-        super(MexicanWorkerTestCase, self).setUp()
-
-        self.app = yield self.get_application({
-            'worker_name': 'test_mexican',
-            })
+        self.proc_helper = self.add_helper(
+            BotMessageProcessorHelper(MexicanMessageProcessor))
+        self.proc = yield self.proc_helper.get_message_processor({})
 
     @inlineCallbacks
     def test_wave(self):
-        msg = self.mkmsg_in(content='!mexican wave', from_addr='jose')
-        yield self.dispatch(msg)
+        yield self.proc_helper.make_dispatch_inbound(
+            '!mexican wave', from_addr='jose')
         self.assertEqual([
-                r"\o/\o/.o..o..o..o.",
-                r".o.\o/\o/.o..o..o.",
-                r".o..o.\o/\o/.o..o.",
-                r".o..o..o.\o/\o/.o.",
-                r".o..o..o..o.\o/\o/",
-                ], [m['content'] for m in self.get_dispatched_messages()])
+            r"\o/\o/.o..o..o..o.",
+            r".o.\o/\o/.o..o..o.",
+            r".o..o.\o/\o/.o..o.",
+            r".o..o..o.\o/\o/.o.",
+            r".o..o..o..o.\o/\o/",
+        ], [m['content'] for m in self.proc_helper.get_dispatched_outbound()])
 
     @inlineCallbacks
     def test_standoff(self):
-        msg = self.mkmsg_in(content='!mexican standoff', from_addr='jose')
-        yield self.dispatch(msg)
-        [msg] = self.get_dispatched_messages()
+        yield self.proc_helper.make_dispatch_inbound(
+            '!mexican standoff', from_addr='jose')
+        [msg] = self.proc_helper.get_dispatched_outbound()
         self.assertEqual("points a pistol at jose.", msg['content'])
         self.assertEqual(
             "ACTION", msg['helper_metadata']['irc']['irc_command'])
@@ -43,7 +38,8 @@ class MexicanWorkerTestCase(ApplicationTestCase):
     @inlineCallbacks
     def test_food(self):
         for _ in range(50):
-            msg = self.mkmsg_in(content='!mexican food', from_addr='jose')
-            yield self.dispatch(msg)
-        msgs = [m['content'] for m in self.get_dispatched_messages()]
+            yield self.proc_helper.make_dispatch_inbound(
+                '!mexican food', from_addr='jose')
+        msgs = [m['content']
+                for m in self.proc_helper.get_dispatched_outbound()]
         self.assertTrue(1 < len(set(msgs)) <= 5)

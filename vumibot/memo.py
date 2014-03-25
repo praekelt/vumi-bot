@@ -4,15 +4,20 @@
 
 import json
 
-import redis
-from twisted.python import log
+from twisted.internet.defer import inlineCallbacks, returnValue
+from vumi import log
+from vumi.config import ConfigDict
+from vumi.persist.txredis_manager import TxRedisManager
 
-from twisted.internet.defer import inlineCallbacks
-
-from vumibot.base import BotWorker, botcommand
+from vumibot.base import BotMessageProcessor, botcommand
 
 
-class MemoWorker(BotWorker):
+class MemoMessageProcessorConfig(BotMessageProcessor.CONFIG_CLASS):
+    redis_manager = ConfigDict(
+        "Redis manager config.", static=True, default={})
+
+
+class MemoMessageProcessor(BotMessageProcessor):
     """Watches for memos to users and notifies users of memos when users
     appear.
 
@@ -22,34 +27,41 @@ class MemoWorker(BotWorker):
         Name of this worker. Used as part of the Redis key prefix.
     """
 
-    def validate_config(self):
-        self.redis_config = self.config.get('redis', {})
-        self.r_prefix = "ircbot:memos:%s" % (self.config['worker_name'],)
+    CONFIG_CLASS = MemoMessageProcessorConfig
 
-    def setup_bot(self):
-        self.r_server = redis.Redis(**self.redis_config)
+    @inlineCallbacks
+    def setup_message_processor(self):
+        self.base_redis = yield TxRedisManager.from_config(
+            self.config.redis_manager)
+        self.redis = self.base_redis.sub_manager('ircbot:memo')
+
+    @inlineCallbacks
+    def teardown_message_processor(self):
+        yield self.redis.close_manager()
+        yield self.base_redis.close_manager()
 
     def rkey_memo(self, channel, recipient):
-        return "%s:%s:%s" % (self.r_prefix, channel, recipient)
+        return "%s:%s" % (channel, recipient)
 
     def store_memo(self, channel, recipient, sender, text):
         memo_key = self.rkey_memo(channel, recipient)
         value = json.dumps([sender, text])
-        self.r_server.rpush(memo_key, value)
+        return self.redis.rpush(memo_key, value)
 
+    @inlineCallbacks
     def retrieve_memos(self, channel, recipient, delete=False):
         memo_key = self.rkey_memo(channel, recipient)
-        memos = self.r_server.lrange(memo_key, 0, -1)
+        memos = yield self.redis.lrange(memo_key, 0, -1)
         if delete:
-            self.r_server.delete(memo_key)
-        return [json.loads(value) for value in memos]
+            yield self.redis.delete(memo_key)
+        returnValue([json.loads(value) for value in memos])
 
     @inlineCallbacks
     def handle_message(self, message):
         nickname = message.user()
         channel = message['group']
 
-        memos = self.retrieve_memos(channel, nickname, delete=True)
+        memos = yield self.retrieve_memos(channel, nickname, delete=True)
         if memos:
             log.msg("Time to deliver some memos:", memos)
         for memo_sender, memo_text in memos:
@@ -58,6 +70,7 @@ class MemoWorker(BotWorker):
                     nickname, memo_sender, memo_text))
 
     @botcommand(r'(?P<target>\S+)\s+(?P<memo_text>.+)$')
+    @inlineCallbacks
     def cmd_tell(self, message, params, target, memo_text):
         "Usage: !tell <nick> <message>"
 
@@ -65,7 +78,7 @@ class MemoWorker(BotWorker):
 
         recipient = target.lower()
         sender = message['from_addr']
-        self.store_memo(channel, recipient, sender, memo_text)
-        return "Sure thing, boss."
+        yield self.store_memo(channel, recipient, sender, memo_text)
+        returnValue("Sure thing, boss.")
 
     cmd_ask = cmd_tell  # alias for polite questions

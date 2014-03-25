@@ -7,10 +7,10 @@ Github informational utilities
 import json
 
 from twisted.internet.defer import inlineCallbacks, returnValue
-
+from vumi.config import ConfigText, ConfigUrl
 from vumi.utils import http_request_full
 
-from vumibot.base import BotWorker, botcommand
+from vumibot.base import BotMessageProcessor, botcommand
 
 
 class ParamExtractor(object):
@@ -92,24 +92,28 @@ class GitHubAPI(object):
     get_pull = mkapi("repos/%(user)s/%(repo)s/pulls/%(pull)s")
 
 
-class GitHubWorker(BotWorker):
-    FEATURE_NAME = "github"
+class GitHubMessageProcessorConfig(BotMessageProcessor.CONFIG_CLASS):
+    auth_token = ConfigText("Auth token.", static=True)
+    base_url = ConfigUrl("Base API URL.", static=True, default=None)
+    default_user = ConfigText("Default user.", static=True)
+    default_repo = ConfigText("Default repo.", static=True)
 
-    def validate_config(self):
-        self.auth_token = self.config['github_auth_token']
-        self.base_url = self.config.get('github_base_url')
-        self.default_user = self.config['github_default_user']
-        self.default_repo = self.config['github_default_repo']
 
-    def setup_bot(self):
-        self.github = GitHubAPI(self.auth_token, self.base_url)
+class GitHubMessageProcessor(BotMessageProcessor):
+    CONFIG_CLASS = GitHubMessageProcessorConfig
+
+    def setup_message_processor(self):
+        base_url = self.config.base_url
+        if base_url is not None:
+            base_url = base_url.geturl()
+        self.github = GitHubAPI(self.config.auth_token, base_url)
 
     def parse_repospec(self, repospec):
         user, repo = ([''] + (repospec or '').split('/'))[-2:]
         if not user:
-            user = self.default_user
+            user = self.config.default_user
         if not repo:
-            repo = self.default_repo
+            repo = self.config.default_repo
         return user, repo
 
     def format_pull_short(self, raw_pull):

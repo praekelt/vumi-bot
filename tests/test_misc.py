@@ -1,27 +1,22 @@
 from twisted.internet.defer import inlineCallbacks
 
-from vumi.application.tests.test_base import ApplicationTestCase
+from vumi.tests.helpers import VumiTestCase
 
-from vumibot.misc import MiscWorker
+from tests.helpers import BotMessageProcessorHelper
+from vumibot.misc import MiscMessageProcessor
 
 
-class MiscWorkerTestCase(ApplicationTestCase):
-
-    application_class = MiscWorker
-    timeout = 1
-
+class TestMiscMessageProcessor(VumiTestCase):
     @inlineCallbacks
     def setUp(self):
-        super(MiscWorkerTestCase, self).setUp()
-
-        self.app = yield self.get_application({
-            'worker_name': 'test_misc',
-            })
+        self.proc_helper = self.add_helper(
+            BotMessageProcessorHelper(MiscMessageProcessor))
+        self.proc = yield self.proc_helper.get_message_processor({})
 
     @inlineCallbacks
     def test_ping(self):
-        msg = self.mkmsg_in(content='!ping', from_addr='marco')
-        yield self.dispatch(msg)
+        yield self.proc_helper.make_dispatch_inbound(
+            '!ping', from_addr='marco')
         self.assertEqual(
             [r"pong."],
-            [m['content'] for m in self.get_dispatched_messages()])
+            [m['content'] for m in self.proc_helper.get_dispatched_outbound()])

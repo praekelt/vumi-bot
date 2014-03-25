@@ -6,9 +6,10 @@ from twisted.internet.defer import inlineCallbacks
 from twisted.internet.protocol import Protocol, Factory
 from twisted.trial.unittest import TestCase
 
-from vumi.application.tests.test_base import ApplicationTestCase
+from vumi.tests.helpers import VumiTestCase
 
-from vumibot.github import GitHubAPI, GitHubWorker, extract_params
+from tests.helpers import BotMessageProcessorHelper
+from vumibot.github import GitHubAPI, GitHubMessageProcessor, extract_params
 
 
 GITHUB_RESPONSES = json.load(
@@ -53,32 +54,25 @@ class FakeHTTP(Protocol):
                                            json.loads(body))
         return self.build_response(response_data)
 
-
-class FakeHTTPTestCaseMixin(object):
-    @inlineCallbacks
-    def start_webserver(self):
+    @classmethod
+    def start_webserver(cls, testcase):
         factory = Factory()
-        factory.protocol = FakeHTTP
-        factory.testcase = self
-        self.webserver = yield reactor.listenTCP(0, factory)
-        addr = self.webserver.getHost()
-        self.url = "http://%s:%s/" % (addr.host, addr.port)
+        factory.protocol = cls
+        factory.testcase = testcase
+        webserver = reactor.listenTCP(0, factory, interface='127.0.0.1')
+        testcase.add_cleanup(webserver.loseConnection)
+        addr = webserver.getHost()
+        webserver.url = "http://%s:%s/" % (addr.host, addr.port)
+        return webserver
 
-    def stop_webserver(self):
-        return self.webserver.loseConnection()
 
-
-class GitHubAPITestCase(TestCase, FakeHTTPTestCaseMixin):
+class GitHubAPITestCase(VumiTestCase):
     # I don't have a good way to test all of this stuff, so I'm just asserting
     # that we get the right size and shape of response.
 
-    @inlineCallbacks
     def setUp(self):
-        yield self.start_webserver()
-        self.api = GitHubAPI("token", self.url)
-
-    def tearDown(self):
-        return self.stop_webserver()
+        self.fake_github = FakeHTTP.start_webserver(self)
+        self.api = GitHubAPI("token", self.fake_github.url)
 
     def set_debug(self, debug=True, real_api=True):
         if real_api:
@@ -104,37 +98,29 @@ class GitHubAPITestCase(TestCase, FakeHTTPTestCaseMixin):
         self.assertEqual(17, len(resp))
 
 
-class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
-
-    application_class = GitHubWorker
-    timeout = 1
-
+class GitHubWorkerTestCase(VumiTestCase):
     @inlineCallbacks
     def setUp(self):
-        yield super(GitHubWorkerTestCase, self).setUp()
-        yield self.start_webserver()
+        self.proc_helper = self.add_helper(
+            BotMessageProcessorHelper(GitHubMessageProcessor))
+        self.fake_github = FakeHTTP.start_webserver(self)
 
-        self.app = yield self.get_application({
-                'worker_name': 'test_github',
-                'github_auth_token': 'tokentoken',
-                'github_default_user': 'praekelt',
-                'github_default_repo': 'vumi',
-                'github_base_url': self.url,
-                })
-
-    @inlineCallbacks
-    def tearDown(self):
-        yield super(GitHubWorkerTestCase, self).tearDown()
-        yield self.stop_webserver()
+        self.proc = yield self.proc_helper.get_message_processor({
+            'auth_token': 'tokentoken',
+            'default_user': 'praekelt',
+            'default_repo': 'vumi',
+            'base_url': self.fake_github.url,
+        })
 
     def get_response_content(self):
-        return [m['content'] for m in self.get_dispatched_messages()]
+        return [m['content']
+                for m in self.proc_helper.get_dispatched_outbound()]
 
     def assert_response_content(self, *responses):
         self.assertEqual(list(responses), self.get_response_content())
 
     def test_parse_repospec(self):
-        parse = self.app.parse_repospec
+        parse = self.proc.parse_repospec
         self.assertEqual(('praekelt', 'vumi'), parse(None))
         self.assertEqual(('praekelt', 'vumi'), parse(''))
         self.assertEqual(('praekelt', 'vumi'), parse('vumi'))
@@ -144,8 +130,7 @@ class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
 
     @inlineCallbacks
     def test_pulls(self):
-        msg = self.mkmsg_in(content='!pulls', from_addr='dev')
-        yield self.dispatch(msg)
+        yield self.proc_helper.make_dispatch_inbound('!pulls', from_addr='dev')
         self.assert_response_content(
             'Found 2 pull requests for praekelt/vumi.',
             ('184: adding PingClientProtocol | unmerged | '
@@ -156,8 +141,8 @@ class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
 
     @inlineCallbacks
     def test_pull(self):
-        msg = self.mkmsg_in(content='!pull 173', from_addr='dev')
-        yield self.dispatch(msg)
+        yield self.proc_helper.make_dispatch_inbound(
+            '!pull 173', from_addr='dev')
         self.assert_response_content(
             ('173: Feature/issue 107 smpp split transport and '
              'client properly | unmerged | '
@@ -167,8 +152,8 @@ class GitHubWorkerTestCase(ApplicationTestCase, FakeHTTPTestCaseMixin):
 
     @inlineCallbacks
     def test_issue(self):
-        msg = self.mkmsg_in(content='!issue 107', from_addr='dev')
-        yield self.dispatch(msg)
+        yield self.proc_helper.make_dispatch_inbound(
+            '!issue 107', from_addr='dev')
         self.assert_response_content(
             ('107: smpp split transport and client properly | '
              '\x02open\x02 | https://github.com/praekelt/vumi/issues/107'),

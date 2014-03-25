@@ -4,12 +4,20 @@
 
 import json
 
-import redis
-from twisted.python import log
-from vumibot.base import BotWorker, botcommand
+from twisted.internet.defer import inlineCallbacks, returnValue
+from vumi import log
+from vumi.config import ConfigDict
+from vumi.persist.txredis_manager import TxRedisManager
+
+from vumibot.base import BotMessageProcessor, botcommand
 
 
-class CoffeeWorker(BotWorker):
+class CoffeeMessageProcessorConfig(BotMessageProcessor.CONFIG_CLASS):
+    redis_manager = ConfigDict(
+        "Redis manager config.", static=True, default={})
+
+
+class CoffeeMessageProcessor(BotMessageProcessor):
     """Track coffee on IRC
 
     Configuration
@@ -18,43 +26,54 @@ class CoffeeWorker(BotWorker):
         Name of this worker. Used as part of the Redis key prefix.
     """
 
-    def validate_config(self):
-        self.redis_config = self.config.get('redis', {})
-        self.r_prefix = "ircbot:coffee:%s" % (self.config['worker_name'],)
+    CONFIG_CLASS = CoffeeMessageProcessorConfig
 
-    def setup_bot(self):
-        self.r_server = redis.Redis(**self.redis_config)
+    @inlineCallbacks
+    def setup_message_processor(self):
+        self.base_redis = yield TxRedisManager.from_config(
+            self.config.redis_manager)
+        self.redis = self.base_redis.sub_manager('ircbot:coffee')
+
+    @inlineCallbacks
+    def teardown_message_processor(self):
+        yield self.redis.close_manager()
+        yield self.base_redis.close_manager()
 
     def rkey_violation(self, channel, recipient):
-        return "%s:%s:%s" % (self.r_prefix, channel, recipient)
+        return "%s:%s" % (channel, recipient)
 
     def store_violation(self, channel, recipient, sender, text):
         violation_key = self.rkey_violation(channel, recipient)
         value = json.dumps([sender, text])
-        self.r_server.rpush(violation_key, value)
+        return self.redis.rpush(violation_key, value)
 
+    @inlineCallbacks
     def retrieve_violations(self, channel, recipient, delete=False):
         violation_key = self.rkey_violation(channel, recipient)
-        violations = self.r_server.lrange(violation_key, 0, -1)
+        violations = yield self.redis.lrange(violation_key, 0, -1)
         if delete:
-            self.r_server.delete(violation_key)
-        return [json.loads(value) for value in violations]
+            yield self.redis.delete(violation_key)
+        returnValue([json.loads(value) for value in violations])
 
     @botcommand(r'$')
+    @inlineCallbacks
     def cmd_mycoffee(self, message, params):
         "Usage: !mycoffee"
 
         channel = message['group']
         nickname = message.user()
 
-        violations = self.retrieve_violations(channel, nickname, delete=True)
+        violations = yield self.retrieve_violations(
+            channel, nickname, delete=True)
         if violations:
             log.msg("Time to deliver some violations:", violations)
-        return ["%s, %s says you butchered this: %s" % (
-                    nickname, violation_sender, violation_text)
-                    for violation_sender, violation_text in violations]
+        returnValue([
+            "%s, %s says you butchered this: %s" % (
+                nickname, violation_sender, violation_text)
+            for violation_sender, violation_text in violations])
 
     @botcommand(r'(?P<target>\S+)\s+(?P<violation_text>.+)$')
+    @inlineCallbacks
     def cmd_coffee(self, message, params, target, violation_text):
         "Usage: !coffee <nick> <violation>"
 
@@ -62,5 +81,5 @@ class CoffeeWorker(BotWorker):
 
         recipient = target.lower()
         sender = message['from_addr']
-        self.store_violation(channel, recipient, sender, violation_text)
-        return "Oh boy!"
+        yield self.store_violation(channel, recipient, sender, violation_text)
+        returnValue("Oh boy!")
